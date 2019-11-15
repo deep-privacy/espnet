@@ -27,6 +27,7 @@ lm_config=conf/lm.yaml
 decode_config=conf/decode.yaml
 
 # rnnlm related
+lm_resume= # specify a snapshot ID to resume LM training
 lmtag=     # tag for managing LMs
 
 # decoding parameter
@@ -191,7 +192,7 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
         --tensorboard-dir tensorboard/${lmexpname} \
         --train-label ${lmdatadir}/train.txt \
         --valid-label ${lmdatadir}/valid.txt \
-        --resume ${lmexpdir}/snapshot.ep.10 \
+        --resume ${lmexpdir}/snapshot.ep.${lm_resume} \
         --dict ${dict} \
         --dump-hdf5-path ${dumpdir}/${lmexpname}
 fi
