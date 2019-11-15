@@ -43,7 +43,8 @@ else
 kaldi.done:
 	test -d kaldi || git clone https://github.com/kaldi-asr/kaldi.git
 	cd kaldi/tools; $(MAKE) all
-	cd kaldi/src; ./configure --shared --use-cuda=no; $(MAKE) depend; $(MAKE) all
+	# cd kaldi/src; ./configure --shared --use-cuda=no; $(MAKE) depend; $(MAKE) all
+	cd kaldi/src; ./configure --shared --use-cuda=no --mathlib=ATLAS; $(MAKE) depend; $(MAKE) all
 	touch kaldi.done
 endif
 
