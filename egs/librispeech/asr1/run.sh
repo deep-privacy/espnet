@@ -10,7 +10,7 @@
 backend=pytorch
 stage=0       # start from -1 if you need to start from data download
 stop_stage=100
-ngpu=2         # number of gpus ("0" uses cpu, otherwise use gpu)
+ngpu=4         # number of gpus ("0" uses cpu, otherwise use gpu)
 debugmode=1
 dumpdir=dump   # directory to dump full features
 N=0            # number of minibatches to be used (mainly for debugging). "0" uses all minibatches.
@@ -20,7 +20,8 @@ resume=        # Resume the training from snapshot
 # feature configuration
 do_delta=false
 
-preprocess_config=conf/specaug.yaml
+# preprocess_config=conf/specaug.yaml
+preprocess_config=
 train_config=conf/train.yaml # current default recipe requires 4 gpus.
                              # if you do not have 4 gpus, please reconfigure the `batch-bins` and `accum-grad` parameters in config.
 lm_config=conf/lm.yaml
@@ -192,7 +193,7 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
         --tensorboard-dir tensorboard/${lmexpname} \
         --train-label ${lmdatadir}/train.txt \
         --valid-label ${lmdatadir}/valid.txt \
-        --resume ${lmexpdir}/snapshot.ep.${lm_resume} \
+        --resume ${lmexpdir}/snapshot.ep.20 \
         --dict ${dict} \
         --dump-hdf5-path ${dumpdir}/${lmexpname}
 fi
@@ -219,6 +220,8 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --preprocess-conf ${preprocess_config} \
         --ngpu ${ngpu} \
         --backend ${backend} \
+        --n-iter-processes 8 \
+        --train-dtype O1 \
         --outdir ${expdir}/results \
         --tensorboard-dir tensorboard/${expname} \
         --debugmode ${debugmode} \
@@ -275,12 +278,17 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         # split data
         splitjson.py --parts ${nj} ${feat_recog_dir}/data_${bpemode}${nbpe}.json
 
-        #### use CPU for decoding
-        ngpu=4
+        #### use CPU for decoding: ngpu=0
+        ngpu=0 # Only one GPU at for
+
+        if [[ $ngpu != 0 ]]; then
+          # 4 subset decoding on 4 gpus
+          echo "Using ${#pids[@]} gpu for task: $rtask"
+        fi
 
         # set batchsize 0 to disable batch decoding
         ${decode_cmd} JOB=1:${nj} ${expdir}/${decode_dir}/log/decode.JOB.log \
-            asr_recog.py \
+            env CUDA_VISIBLE_DEVICES=${#pids[@]} asr_recog.py \
             --config ${decode_config} \
             --ngpu ${ngpu} \
             --backend ${backend} \
