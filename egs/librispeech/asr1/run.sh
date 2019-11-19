@@ -188,7 +188,7 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
         --config ${lm_config} \
         --ngpu ${ngpu} \
         --backend ${backend} \
-        --verbose 1 \
+        --verbose ${verbose} \
         --outdir ${lmexpdir} \
         --tensorboard-dir tensorboard/${lmexpname} \
         --train-label ${lmdatadir}/train.txt \
@@ -267,7 +267,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --out ${lmexpdir}/${lang_model} \
             --num ${lm_n_average}
     fi
-    nj=32
+    nj=1
 
     pids=() # initialize pids
     for rtask in ${recog_set}; do
@@ -279,12 +279,15 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         splitjson.py --parts ${nj} ${feat_recog_dir}/data_${bpemode}${nbpe}.json
 
         #### use CPU for decoding: ngpu=0
-        ngpu=0 # Only one GPU at for
+        ngpu=1
 
         if [[ $ngpu != 0 ]]; then
-          # 4 subset decoding on 4 gpus
+          # NOTE: infrastructure dependent conf, must have 4 GPUs!
+          # Decoding 4 subset ({dev, test}{clean, other}) decoding on 4 GPUs
           echo "Using ${#pids[@]} gpu for task: $rtask"
         fi
+
+        # NOTE: Tweak the batchsize (min: 1) relative the amount of gRAM available
 
         # set batchsize 0 to disable batch decoding
         ${decode_cmd} JOB=1:${nj} ${expdir}/${decode_dir}/log/decode.JOB.log \
@@ -292,7 +295,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --config ${decode_config} \
             --ngpu ${ngpu} \
             --backend ${backend} \
-            --batchsize 0 \
+            --batchsize 3 \
             --recog-json ${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
             --result-label ${expdir}/${decode_dir}/data.JOB.json \
             --model ${expdir}/results/${recog_model}  \
