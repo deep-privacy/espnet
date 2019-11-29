@@ -8,9 +8,9 @@
 
 # general configuration
 backend=pytorch
-stage=-1       # start from -1 if you need to start from data download
+stage=3       # start from -1 if you need to start from data download
 stop_stage=100
-ngpu=1         # number of gpus ("0" uses cpu, otherwise use gpu)
+ngpu=0         # number of gpus ("0" uses cpu, otherwise use gpu)
 debugmode=1
 dumpdir=dump   # directory to dump full features
 N=0            # number of minibatches to be used (mainly for debugging). "0" uses all minibatches.
@@ -52,7 +52,7 @@ set -o pipefail
 train_set="train_nodev"
 train_dev="train_dev"
 lm_test="test"
-recog_set="train_dev test"
+recog_set="test"
 
 if [ ${stage} -le -1 ] && [ ${stop_stage} -ge -1 ]; then
     echo "stage -1: Data Download"
@@ -217,13 +217,14 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --minibatches ${N} \
         --verbose ${verbose} \
         --resume ${resume} \
-        --train-json ${feat_tr_dir}/data.json \
-        --valid-json ${feat_dt_dir}/data.json
+        --report-interval-iters 2 \
+        --train-json ${feat_dt_dir}/data.json \
+        --valid-json ${dumpdir}/test/delta${do_delta}/data.json
 fi
 
 if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     echo "stage 5: Decoding"
-    nj=8
+    nj=6
 
     pids=() # initialize pids
     for rtask in ${recog_set}; do
