@@ -15,7 +15,7 @@ debugmode=1
 dumpdir=dump   # directory to dump full features
 N=0            # number of minibatches to be used (mainly for debugging). "0" uses all minibatches.
 verbose=0      # verbose option
-resume=        # Resume the training from snapshot
+resume=snapshot.ep.8        # Resume the training from snapshot
 
 # feature configuration
 do_delta=false
@@ -229,7 +229,7 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --debugdir ${expdir} \
         --minibatches ${N} \
         --verbose ${verbose} \
-        --resume ${resume} \
+        --resume ${expdir}/results/${resume} \
         --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.json \
         --valid-json ${feat_dt_dir}/data_${bpemode}${nbpe}.json
 fi
@@ -287,7 +287,8 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
           echo "Using ${#pids[@]} gpu for task: $rtask"
         fi
 
-        # NOTE: Tweak the batchsize (min: 1) relative the amount of gRAM available
+        # NOTE(pchampio): Tweak the batchsize (min: 1) relative the amount of G-RAM available
+        # 'batchsize 2' -> 12G of G-RAM
 
         # set batchsize 0 to disable batch decoding
         ${decode_cmd} JOB=1:${nj} ${expdir}/${decode_dir}/log/decode.JOB.log \
@@ -295,7 +296,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --config ${decode_config} \
             --ngpu ${ngpu} \
             --backend ${backend} \
-            --batchsize 3 \
+            --batchsize 2 \
             --recog-json ${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
             --result-label ${expdir}/${decode_dir}/data.JOB.json \
             --model ${expdir}/results/${recog_model}  \
