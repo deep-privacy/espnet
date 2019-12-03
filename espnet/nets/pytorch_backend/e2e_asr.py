@@ -37,6 +37,10 @@ from espnet.nets.pytorch_backend.rnn.decoders import decoder_for
 from espnet.nets.pytorch_backend.rnn.encoders import encoder_for
 from espnet.nets.scorers.ctc import CTCPrefixScorer
 
+from damped import disturb
+import time
+from datetime import timedelta
+
 CTC_LOSS_THRESHOLD = 10000
 
 
@@ -227,6 +231,9 @@ class E2E(ASRInterface, torch.nn.Module):
         self.loss = None
         self.acc = None
 
+        self.spk_branch = disturb.DomainTask(name="speaker_identificaion", to_rank=1)
+        self.wait_time = 0.0
+
     def init_like_chainer(self):
         """Initialize weight like chainer.
 
@@ -263,6 +270,13 @@ class E2E(ASRInterface, torch.nn.Module):
 
         # 1. Encoder
         hs_pad, hlens, _ = self.enc(hs_pad, hlens)
+
+        # 1.5 pchampio send the hidden state to domain task
+        start = time.time()
+        self.spk_branch.isend(hs_pad)
+        end = time.time()
+        self.wait_time += end-start
+        print("time:", str(timedelta(seconds=self.wait_time)))
 
         # 2. CTC loss
         if self.mtlalpha == 0:

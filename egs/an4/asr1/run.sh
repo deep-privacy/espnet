@@ -8,8 +8,8 @@
 
 # general configuration
 backend=pytorch
-stage=3       # start from -1 if you need to start from data download
-stop_stage=100
+stage=4       # start from -1 if you need to start from data download
+stop_stage=4
 ngpu=0         # number of gpus ("0" uses cpu, otherwise use gpu)
 debugmode=1
 dumpdir=dump   # directory to dump full features
@@ -204,7 +204,6 @@ mkdir -p ${expdir}
 
 if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
     echo "stage 4: Network Training"
-    ${cuda_cmd} --gpu ${ngpu} ${expdir}/train.log \
         asr_train.py \
         --config ${train_config} \
         --ngpu ${ngpu} \
