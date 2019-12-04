@@ -232,7 +232,7 @@ class E2E(ASRInterface, torch.nn.Module):
         self.acc = None
 
         self.spk_branch = disturb.DomainTask(name="speaker_identificaion", to_rank=1)
-        self.wait_time = 0.0
+
 
     def init_like_chainer(self):
         """Initialize weight like chainer.
@@ -271,12 +271,8 @@ class E2E(ASRInterface, torch.nn.Module):
         # 1. Encoder
         hs_pad, hlens, _ = self.enc(hs_pad, hlens)
 
-        # 1.5 pchampio send the hidden state to domain task
-        start = time.time()
-        self.spk_branch.isend(hs_pad)
-        end = time.time()
-        self.wait_time += end-start
-        print("time:", str(timedelta(seconds=self.wait_time)))
+        # 1,5 pchampio send the hidden state to domain task (async)
+        req = self.spk_branch.isend(hs_pad.cpu())
 
         # 2. CTC loss
         if self.mtlalpha == 0:
@@ -290,6 +286,9 @@ class E2E(ASRInterface, torch.nn.Module):
         else:
             self.loss_att, acc, _ = self.dec(hs_pad, hlens, ys_pad)
         self.acc = acc
+
+        # 3,5. pchampio wait for spk_branch to fully have received the hidden state
+        req.wait()
 
         # 4. compute cer without beam search
         if self.mtlalpha == 0 or self.char_list is None:

@@ -15,7 +15,7 @@ debugmode=1
 dumpdir=dump   # directory to dump full features
 N=0            # number of minibatches to be used (mainly for debugging). "0" uses all minibatches.
 verbose=0      # verbose option
-resume=snapshot.ep.8        # Resume the training from snapshot
+resume=snapshot.ep.12        # Resume the training from snapshot
 
 # feature configuration
 do_delta=false
@@ -221,7 +221,6 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --ngpu ${ngpu} \
         --backend ${backend} \
         --n-iter-processes 8 \
-        --train-dtype O1 \
         --outdir ${expdir}/results \
         --tensorboard-dir tensorboard/${expname} \
         --debugmode ${debugmode} \
