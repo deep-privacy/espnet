@@ -7,8 +7,11 @@ import h5py
 import kaldiio
 import numpy as np
 import soundfile
+import torch
 
 from espnet.transform.transformation import Transformation
+
+from damped import disturb
 
 
 class LoadInputsAndTargets(object):
@@ -171,6 +174,13 @@ class LoadInputsAndTargets(object):
                         return_batch[x_name], uttid_list, **self.preprocess_args)
 
         # Doesn't return the names now.
+
+        # pchampio use DomainLabelMapper to store the uttid_list
+        key_x = torch.tensor(return_batch['input1'][0][0][:3], dtype=torch.float)
+        key_y = torch.tensor(return_batch['target1'][0][:2], dtype=torch.float)
+        key = torch.cat((key_x, key_y))
+        disturb.DomainLabelMapper().add(key, uttid_list)
+
         return tuple(return_batch.values())
 
     def _create_batch_asr(self, x_feats_dict, y_feats_dict, uttid_list):

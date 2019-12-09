@@ -38,8 +38,6 @@ from espnet.nets.pytorch_backend.rnn.encoders import encoder_for
 from espnet.nets.scorers.ctc import CTCPrefixScorer
 
 from damped import disturb
-import time
-from datetime import timedelta
 
 CTC_LOSS_THRESHOLD = 10000
 
@@ -272,7 +270,21 @@ class E2E(ASRInterface, torch.nn.Module):
         hs_pad, hlens, _ = self.enc(hs_pad, hlens)
 
         # 1,5 pchampio send the hidden state to domain task (async)
-        req = self.spk_branch.isend(hs_pad.cpu())
+        key_x = torch.tensor(xs_pad[0][0][:3], dtype=torch.float)
+        key_y = torch.tensor(ys_pad[0][:2], dtype=torch.float)
+        key = torch.cat((key_x, key_y))
+        uttid_list = disturb.DomainLabelMapper().get(key)
+
+        def toInt(uttid):
+            a = []
+            v = 1
+            for char in uttid.split("-")[0]:
+                v *= 10
+                a.append(v * ord(char))
+            return sum(a)
+
+        uttid_int_list = list(map(toInt, uttid_list))
+        req = self.spk_branch.fork_detach(hs_pad.cpu(), torch.tensor(uttid_int_list, dtype=torch.float32))
 
         # 2. CTC loss
         if self.mtlalpha == 0:
