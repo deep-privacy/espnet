@@ -155,6 +155,7 @@ class LoadInputsAndTargets(object):
         if self.mode == 'asr':
             return_batch, uttid_list = self._create_batch_asr(
                 x_feats_dict, y_feats_dict, uttid_list)
+            print("COUCOU========")
         elif self.mode == 'tts':
             _, info = batch[0]
             eos = int(info['output'][0]['shape'][1]) - 1
@@ -166,6 +167,13 @@ class LoadInputsAndTargets(object):
         else:
             raise NotImplementedError
 
+        # pchampio use DomainLabelMapper to store the uttid_list
+        key_x = torch.as_tensor(return_batch['input1'][0][0][:3], dtype=torch.float)
+        key_y = torch.as_tensor(return_batch['target1'][0][:2], dtype=torch.float)
+        key = torch.cat((key_x, key_y))
+        print("KEY==", key)
+        disturb.DomainLabelMapper().add(key, uttid_list)
+
         if self.preprocessing is not None:
             # Apply pre-processing all input features
             for x_name in return_batch.keys():
@@ -174,12 +182,6 @@ class LoadInputsAndTargets(object):
                         return_batch[x_name], uttid_list, **self.preprocess_args)
 
         # Doesn't return the names now.
-
-        # pchampio use DomainLabelMapper to store the uttid_list
-        key_x = torch.tensor(return_batch['input1'][0][0][:3], dtype=torch.float)
-        key_y = torch.tensor(return_batch['target1'][0][:2], dtype=torch.float)
-        key = torch.cat((key_x, key_y))
-        disturb.DomainLabelMapper().add(key, uttid_list)
 
         return tuple(return_batch.values())
 

@@ -270,9 +270,10 @@ class E2E(ASRInterface, torch.nn.Module):
         hs_pad, hlens, _ = self.enc(hs_pad, hlens)
 
         # 1,5 pchampio send the hidden state to domain task (async)
-        key_x = torch.tensor(xs_pad[0][0][:3], dtype=torch.float)
-        key_y = torch.tensor(ys_pad[0][:2], dtype=torch.float)
+        key_x = xs_pad[0][0][:3].clone().detach().float()
+        key_y = ys_pad[0][:2].clone().detach().float()
         key = torch.cat((key_x, key_y))
+        print(disturb.DomainLabelMapper().map)
         uttid_list = disturb.DomainLabelMapper().get(key)
 
         def toInt(uttid):
