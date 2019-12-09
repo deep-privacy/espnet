@@ -273,19 +273,22 @@ class E2E(ASRInterface, torch.nn.Module):
         key_x = xs_pad[0][0][:3].clone().detach().float()
         key_y = ys_pad[0][:2].clone().detach().float()
         key = torch.cat((key_x, key_y))
-        print(disturb.DomainLabelMapper().map)
-        uttid_list = disturb.DomainLabelMapper().get(key)
+        ## when the training is resumed from a trainer snapshot, 
+        ## the DomainLabelMapper isn't available, so we skip fork training
+        req = None
+        if len(disturb.DomainLabelMapper().map) != 0:
+            uttid_list = disturb.DomainLabelMapper().get(key)
 
-        def toInt(uttid):
-            a = []
-            v = 1
-            for char in uttid.split("-")[0]:
-                v *= 10
-                a.append(v * ord(char))
-            return sum(a)
+            def toInt(uttid):
+                a = []
+                v = 1
+                for char in uttid.split("-")[0]:
+                    v *= 10
+                    a.append(v * ord(char))
+                return sum(a)
 
-        uttid_int_list = list(map(toInt, uttid_list))
-        req = self.spk_branch.fork_detach(hs_pad.cpu(), torch.tensor(uttid_int_list, dtype=torch.float32))
+            uttid_int_list = list(map(toInt, uttid_list))
+            req = self.spk_branch.fork_detach(hs_pad.cpu(), torch.tensor(uttid_int_list, dtype=torch.float32))
 
         # 2. CTC loss
         if self.mtlalpha == 0:
@@ -301,7 +304,8 @@ class E2E(ASRInterface, torch.nn.Module):
         self.acc = acc
 
         # 3,5. pchampio wait for spk_branch to fully have received the hidden state
-        req.wait()
+        if req is not None:
+            req.wait()
 
         # 4. compute cer without beam search
         if self.mtlalpha == 0 or self.char_list is None:

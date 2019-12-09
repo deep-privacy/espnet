@@ -155,7 +155,6 @@ class LoadInputsAndTargets(object):
         if self.mode == 'asr':
             return_batch, uttid_list = self._create_batch_asr(
                 x_feats_dict, y_feats_dict, uttid_list)
-            print("COUCOU========")
         elif self.mode == 'tts':
             _, info = batch[0]
             eos = int(info['output'][0]['shape'][1]) - 1
@@ -171,7 +170,6 @@ class LoadInputsAndTargets(object):
         key_x = torch.as_tensor(return_batch['input1'][0][0][:3], dtype=torch.float)
         key_y = torch.as_tensor(return_batch['target1'][0][:2], dtype=torch.float)
         key = torch.cat((key_x, key_y))
-        print("KEY==", key)
         disturb.DomainLabelMapper().add(key, uttid_list)
 
         if self.preprocessing is not None:
