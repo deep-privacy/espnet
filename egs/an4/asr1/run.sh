@@ -205,6 +205,7 @@ mkdir -p ${expdir}
 if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
     echo "stage 4: Network Training"
         asr_train.py \
+        --n-iter-processes 4 \
         --config ${train_config} \
         --ngpu ${ngpu} \
         --backend ${backend} \

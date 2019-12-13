@@ -288,7 +288,7 @@ class E2E(ASRInterface, torch.nn.Module):
                 return sum(a)
 
             uttid_int_list = list(map(toInt, uttid_list))
-            req = self.spk_branch.fork_detach(hs_pad.cpu(), torch.tensor(uttid_int_list, dtype=torch.float32))
+            req = self.spk_branch.fork_detach(hs_pad.cpu(), torch.tensor(uttid_int_list), dtype=(torch.float32, torch.uint8))
 
         # 2. CTC loss
         if self.mtlalpha == 0:
