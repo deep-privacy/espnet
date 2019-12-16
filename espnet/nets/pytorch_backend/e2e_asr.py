@@ -37,7 +37,7 @@ from espnet.nets.pytorch_backend.rnn.decoders import decoder_for
 from espnet.nets.pytorch_backend.rnn.encoders import encoder_for
 from espnet.nets.scorers.ctc import CTCPrefixScorer
 
-from damped import disturb
+import damped
 
 CTC_LOSS_THRESHOLD = 10000
 
@@ -232,7 +232,7 @@ class E2E(ASRInterface, torch.nn.Module):
         self.loss = None
         self.acc = None
 
-        self.spk_branch = disturb.DomainTask(name="speaker_identificaion", to_rank=1)
+        self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=1)
 
 
     def init_like_chainer(self):
@@ -273,25 +273,23 @@ class E2E(ASRInterface, torch.nn.Module):
         hs_pad, hlens, _ = self.enc(hs_pad, hlens)
 
         # 1,5 pchampio send the hidden state to domain task (async)
-        key_x = xs_pad[0][0][:3].clone().detach().float()
-        key_y = ys_pad[0][:2].clone().detach().float()
-        key = torch.cat((key_x, key_y))
-        ## when the training is resumed from a trainer snapshot, 
-        ## the DomainLabelMapper isn't available, so we skip fork training
-        req = None
-        if len(disturb.DomainLabelMapper().map) != 0:
-            uttid_list = disturb.DomainLabelMapper().get(key)
 
-            def toInt(uttid):
-                a = []
-                v = 1
-                for char in uttid.split("-")[0]:
-                    v *= 10
-                    a.append(v * ord(char))
-                return sum(a)
+        def _codec(x):
+            return damped.utils.StrIntEncoder.encode(x.split("-")[0])
 
-            uttid_int_list = list(map(toInt, uttid_list))
-            req = self.spk_branch.fork_detach(hs_pad.cpu(), torch.tensor(uttid_int_list), dtype=(torch.float32, torch.uint8))
+        uttid_list = []
+        for i in range(len(xs_pad)):
+            key_x = xs_pad[i][0][:3].clone().detach().float()
+            key_y = ys_pad[i][:2].clone().detach().float()
+            key = torch.cat((key_x, key_y))
+
+            uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
+            uttid_list.append(uttid)
+
+        req = self.spk_branch.fork_detach(hs_pad.cpu(),
+                                          torch.tensor(uttid_list, dtype=torch.long),
+                                          dtype=(torch.float32, torch.long)
+                                          )
 
         # 2. CTC loss
         if self.mtlalpha == 0:
@@ -307,8 +305,7 @@ class E2E(ASRInterface, torch.nn.Module):
         self.acc = acc
 
         # 3,5. pchampio wait for spk_branch to fully have received the hidden state
-        if req is not None:
-            req.wait()
+        req.wait()
 
         # 4. compute cer without beam search
         if self.mtlalpha == 0 or self.char_list is None:
