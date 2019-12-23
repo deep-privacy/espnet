@@ -275,7 +275,7 @@ class E2E(ASRInterface, torch.nn.Module):
         # 1,5 pchampio send the hidden state to domain task (async)
 
         def _codec(x):
-            return damped.utils.StrIntEncoder.encode(x.split("-")[0])
+            return damped.utils.str_int_encoder.encode(x.split("-")[0])
 
         uttid_list = []
         for i in range(len(xs_pad)):
