@@ -273,15 +273,12 @@ class E2E(ASRInterface, torch.nn.Module):
         hs_pad, hlens, _ = self.enc(hs_pad, hlens)
 
         # 1,5 pchampio send the hidden state to domain task (async)
-
         def _codec(x):
             return damped.utils.str_int_encoder.encode(x.split("-")[0])
 
         uttid_list = []
         for i in range(len(xs_pad)):
-            key_x = xs_pad[i][0][:3].clone().detach().float()
-            key_y = ys_pad[i][:2].clone().detach().float()
-            key = torch.cat((key_x, key_y))
+            key = xs_pad[i][0][:3].clone().detach().float()
 
             uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
             uttid_list.append(uttid)
@@ -290,6 +287,7 @@ class E2E(ASRInterface, torch.nn.Module):
                                           torch.tensor(uttid_list, dtype=torch.long),
                                           dtype=(torch.float32, torch.long)
                                           )
+        # End pchampio
 
         # 2. CTC loss
         if self.mtlalpha == 0:
@@ -306,6 +304,7 @@ class E2E(ASRInterface, torch.nn.Module):
 
         # 3,5. pchampio wait for spk_branch to fully have received the hidden state
         req.wait()
+        # End pchampio
 
         # 4. compute cer without beam search
         if self.mtlalpha == 0 or self.char_list is None:
@@ -472,6 +471,24 @@ class E2E(ASRInterface, torch.nn.Module):
 
         # 1. Encoder
         hs_pad, hlens, _ = self.enc(hs_pad, hlens)
+
+        # 1,5 pchampio send the hidden state to domain task (async)
+        def _codec(x):
+            return damped.utils.str_int_encoder.encode(x.split("-")[0])
+
+        uttid_list = []
+        for i in range(len(xs_pad)):
+            key = xs_pad[i][0][:3].clone().detach().float()
+
+            uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
+            uttid_list.append(uttid)
+
+        req = self.spk_branch.fork_detach(hs_pad.cpu(),
+                                          torch.tensor(uttid_list, dtype=torch.long),
+                                          dtype=(torch.float32, torch.long)
+                                          )
+        req.wait()
+        # End pchampio
 
         # calculate log P(z_t|X) for CTC scores
         if recog_args.ctc_weight > 0.0:
