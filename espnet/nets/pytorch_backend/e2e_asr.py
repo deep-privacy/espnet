@@ -29,6 +29,7 @@ from espnet.nets.e2e_asr_common import label_smoothing_dist
 from espnet.nets.pytorch_backend.ctc import ctc_for
 from espnet.nets.pytorch_backend.initialization import lecun_normal_init_parameters
 from espnet.nets.pytorch_backend.initialization import set_forget_bias_to_one
+from espnet.nets.pytorch_backend.nets_utils import get_subsample
 from espnet.nets.pytorch_backend.nets_utils import pad_list
 from espnet.nets.pytorch_backend.nets_utils import to_device
 from espnet.nets.pytorch_backend.nets_utils import to_torch_tensor
@@ -168,17 +169,7 @@ class E2E(ASRInterface, torch.nn.Module):
         self.eos = odim - 1
 
         # subsample info
-        # +1 means input (+1) and layers outputs (args.elayer)
-        subsample = np.ones(args.elayers + 1, dtype=np.int)
-        if args.etype.endswith("p") and not args.etype.startswith("vgg"):
-            ss = args.subsample.split("_")
-            for j in range(min(args.elayers + 1, len(ss))):
-                subsample[j] = int(ss[j])
-        else:
-            logging.warning(
-                'Subsampling is not performed for vgg*. It is performed in max pooling layers at CNN.')
-        logging.info('subsample: ' + ' '.join([str(x) for x in subsample]))
-        self.subsample = subsample
+        self.subsample = get_subsample(args, mode='asr', arch='rnn')
 
         # label smoothing info
         if args.lsm_type and os.path.isfile(args.train_json):
@@ -273,7 +264,6 @@ class E2E(ASRInterface, torch.nn.Module):
         hs_pad, hlens, _ = self.enc(hs_pad, hlens)
 
         # 1,5 pchampio send the hidden state to domain task (async)
-
         def _codec(x):
             if x == "-1":
                 print("Damped warning: Domain Label not found! (Sending -1)")
@@ -282,9 +272,7 @@ class E2E(ASRInterface, torch.nn.Module):
 
         uttid_list = []
         for i in range(len(xs_pad)):
-            key_x = xs_pad[i][0][:3].clone().detach().float()
-            key_y = ys_pad[i][:2].clone().detach().float()
-            key = torch.cat((key_x, key_y))
+            key = xs_pad[i][0][:3].clone().detach().float()
 
             uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
             uttid_list.append(uttid)
@@ -293,6 +281,7 @@ class E2E(ASRInterface, torch.nn.Module):
                                           torch.tensor(uttid_list, dtype=torch.long),
                                           dtype=(torch.float32, torch.long)
                                           )
+        # End pchampio
 
         # 2. CTC loss
         if self.mtlalpha == 0:
@@ -309,6 +298,7 @@ class E2E(ASRInterface, torch.nn.Module):
 
         # 3,5. pchampio wait for spk_branch to fully have received the hidden state
         req.wait()
+        # End pchampio
 
         # 4. compute cer without beam search
         if self.mtlalpha == 0 or self.char_list is None:
@@ -475,6 +465,24 @@ class E2E(ASRInterface, torch.nn.Module):
 
         # 1. Encoder
         hs_pad, hlens, _ = self.enc(hs_pad, hlens)
+
+        # 1,5 pchampio send the hidden state to domain task (async)
+        def _codec(x):
+            return damped.utils.str_int_encoder.encode(x.split("-")[0])
+
+        uttid_list = []
+        for i in range(len(xs_pad)):
+            key = xs_pad[i][0][:3].clone().detach().float()
+
+            uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
+            uttid_list.append(uttid)
+
+        req = self.spk_branch.fork_detach(hs_pad.cpu(),
+                                          torch.tensor(uttid_list, dtype=torch.long),
+                                          dtype=(torch.float32, torch.long)
+                                          )
+        req.wait()
+        # End pchampio
 
         # calculate log P(z_t|X) for CTC scores
         if recog_args.ctc_weight > 0.0:

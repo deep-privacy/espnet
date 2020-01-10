@@ -166,13 +166,6 @@ class LoadInputsAndTargets(object):
         else:
             raise NotImplementedError
 
-        # pchampio use DomainLabelMapper to store the uttid_list
-        for i in range(len(return_batch['input1'])):
-            key_x = torch.as_tensor(return_batch['input1'][i][0][:3], dtype=torch.float)
-            key_y = torch.as_tensor(return_batch['target1'][i][:2], dtype=torch.float)
-            key = torch.cat((key_x, key_y))
-            disturb.DomainLabelMapper(name="speaker_identificaion").add(key, uttid_list[i])
-
         if self.preprocessing is not None:
             # Apply pre-processing all input features
             for x_name in return_batch.keys():
@@ -181,6 +174,11 @@ class LoadInputsAndTargets(object):
                         return_batch[x_name], uttid_list, **self.preprocess_args)
 
         # Doesn't return the names now.
+
+        # pchampio use DomainLabelMapper to store the uttid_list
+        for i in range(len(return_batch['input1'])):
+            key = torch.as_tensor(return_batch['input1'][i][0][:3], dtype=torch.float)
+            disturb.DomainLabelMapper(name="speaker_identificaion").add(key, uttid_list[i])
 
         return tuple(return_batch.values())
 

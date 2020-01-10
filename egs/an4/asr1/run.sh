@@ -9,7 +9,7 @@
 # general configuration
 backend=pytorch
 stage=4       # start from -1 if you need to start from data download
-stop_stage=4
+stop_stage=5
 ngpu=0         # number of gpus ("0" uses cpu, otherwise use gpu)
 debugmode=1
 dumpdir=dump   # directory to dump full features
@@ -224,7 +224,7 @@ fi
 
 if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     echo "stage 5: Decoding"
-    nj=6
+    nj=1
 
     pids=() # initialize pids
     for rtask in ${recog_set}; do

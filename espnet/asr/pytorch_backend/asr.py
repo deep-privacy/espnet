@@ -117,6 +117,8 @@ class CustomEvaluator(BaseEvaluator):
         summary = reporter_module.DictSummary()
 
         self.model.eval()
+        from damped import disturb
+        disturb.eval(domain_tasks=1)
         with torch.no_grad():
             for batch in it:
                 x = _recursive_to(batch, self.device)
@@ -133,6 +135,7 @@ class CustomEvaluator(BaseEvaluator):
 
                 summary.add(observation)
         self.model.train()
+        disturb.train(domain_tasks=1)
 
         return summary.compute_mean()
 
@@ -202,7 +205,6 @@ class CustomUpdater(StandardUpdater):
         if self.grad_noise:
             from espnet.asr.asr_utils import add_gradient_noise
             add_gradient_noise(self.model, self.iteration, duration=100, eta=1.0, scale_factor=0.55)
-        loss.detach()  # Truncate the graph
 
         # update parameters
         self.forward_count += 1
