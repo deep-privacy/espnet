@@ -269,6 +269,9 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     nj=1
 
     pids=() # initialize pids
+    recog_set="test_clean test_other dev_clean dev_other"
+    recog_set="test_clean"
+    recog_set="test_other"
     for rtask in ${recog_set}; do
     (
         decode_dir=decode_${rtask}_${recog_model}_$(basename ${decode_config%.*})_${lmtag}

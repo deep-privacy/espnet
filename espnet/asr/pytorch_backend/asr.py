@@ -198,9 +198,9 @@ class CustomUpdater(StandardUpdater):
             # NOTE: for a compatibility with noam optimizer
             opt = optimizer.optimizer if hasattr(optimizer, "optimizer") else optimizer
             with amp.scale_loss(loss, opt) as scaled_loss:
-                scaled_loss.backward()
+                pass # scaled_loss.backward()
         else:
-            loss.backward()
+            pass #  loss.backward()
         # gradient noise injection
         if self.grad_noise:
             from espnet.asr.asr_utils import add_gradient_noise
@@ -218,8 +218,8 @@ class CustomUpdater(StandardUpdater):
         if math.isnan(grad_norm):
             logging.warning('grad norm is nan. Do not update model.')
         else:
-            optimizer.step()
-        optimizer.zero_grad()
+            pass # optimizer.step()
+        pass # optimizer.zero_grad()
 
     def update(self):
         self.update_core()
