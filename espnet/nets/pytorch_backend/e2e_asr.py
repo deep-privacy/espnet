@@ -266,6 +266,9 @@ class E2E(ASRInterface, torch.nn.Module):
 
         # 1,5 pchampio send the hidden state to domain task (async)
         def _codec(x):
+            if x == "-1":
+                print("Damped warning: Domain Label not found! (Sending -1)")
+                return damped.utils.str_int_encoder.encode(x)
             return damped.utils.str_int_encoder.encode(x.split("-")[0])
 
         uttid_list = []
