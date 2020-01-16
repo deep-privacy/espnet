@@ -366,6 +366,6 @@ def main(cmd_args):
 
 if __name__ == '__main__':
     from damped import disturb
-    disturb.init(expected_domain_tasks=1)
+    disturb.init()
     main(sys.argv[1:])
-    disturb.stop(domain_tasks=1)
+    disturb.stop()

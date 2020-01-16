@@ -6,6 +6,8 @@
 . ./path.sh || exit 1;
 . ./cmd.sh || exit 1;
 
+damped_n_domain=8
+
 # general configuration
 backend=pytorch
 stage=4       # start from -1 if you need to start from data download
@@ -204,7 +206,7 @@ mkdir -p ${expdir}
 
 if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
     echo "stage 4: Network Training"
-        asr_train.py \
+        DAMPED_N_DOMAIN=$damped_n_domain asr_train.py \
         --n-iter-processes 4 \
         --config ${train_config} \
         --ngpu ${ngpu} \
@@ -244,7 +246,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         ngpu=0
 
         ${decode_cmd} JOB=1:${nj} ${expdir}/${decode_dir}/log/decode.JOB.log \
-            asr_recog.py \
+            DAMPED_N_DOMAIN=$damped_n_domain asr_recog.py \
             --config ${decode_config} \
             --ngpu ${ngpu} \
             --backend ${backend} \

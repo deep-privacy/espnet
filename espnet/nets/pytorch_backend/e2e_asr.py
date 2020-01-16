@@ -223,8 +223,9 @@ class E2E(ASRInterface, torch.nn.Module):
         self.loss = None
         self.acc = None
 
-        self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=1)
-
+        self.gender_branch = damped.disturb.DomainTask(name="gender_classif", to_rank=1)
+        self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=2)
+        print(f"=== damped.disturb: layer 3-LSTM_l3 branches out to: Gender:1 and Spk:2")
 
     def init_like_chainer(self):
         """Initialize weight like chainer.
@@ -274,10 +275,15 @@ class E2E(ASRInterface, torch.nn.Module):
             uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
             uttid_list.append(uttid)
 
-        req = self.spk_branch.fork_detach(hs_pad.cpu(),
-                                          torch.tensor(uttid_list, dtype=torch.long),
-                                          dtype=(torch.float32, torch.long)
-                                          )
+        req = self.gender_branch.fork_detach(hs_pad.cpu(),
+                                             torch.tensor(uttid_list, dtype=torch.long),
+                                             dtype=(torch.float32, torch.long)
+                                             )
+        req2 = self.spk_branch.fork_detach(hs_pad.cpu(),
+                                           torch.tensor(uttid_list, dtype=torch.long),
+                                           dtype=(torch.float32, torch.long)
+                                           )
+
         # End pchampio
 
         # 2. CTC loss
@@ -293,8 +299,9 @@ class E2E(ASRInterface, torch.nn.Module):
             self.loss_att, acc, _ = self.dec(hs_pad, hlens, ys_pad)
         self.acc = acc
 
-        # 3,5. pchampio wait for spk_branch to fully have received the hidden state
+        # 3,5. pchampio wait for domain branch to fully have received the hidden state
         req.wait()
+        req2.wait()
         # End pchampio
 
         # 4. compute cer without beam search
@@ -474,7 +481,7 @@ class E2E(ASRInterface, torch.nn.Module):
             uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
             uttid_list.append(uttid)
 
-        req = self.spk_branch.fork_detach(hs_pad.cpu(),
+        req = self.gender_branch.fork_detach(hs_pad.cpu(),
                                           torch.tensor(uttid_list, dtype=torch.long),
                                           dtype=(torch.float32, torch.long)
                                           )

@@ -118,7 +118,7 @@ class CustomEvaluator(BaseEvaluator):
 
         self.model.eval()
         from damped import disturb
-        disturb.eval(domain_tasks=1)
+        disturb.eval()
         with torch.no_grad():
             for batch in it:
                 x = _recursive_to(batch, self.device)
@@ -135,7 +135,7 @@ class CustomEvaluator(BaseEvaluator):
 
                 summary.add(observation)
         self.model.train()
-        disturb.train(domain_tasks=1)
+        disturb.train()
 
         return summary.compute_mean()
 

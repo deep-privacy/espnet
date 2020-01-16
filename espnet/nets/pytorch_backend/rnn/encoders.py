@@ -11,6 +11,8 @@ from espnet.nets.e2e_asr_common import get_vgg2l_odim
 from espnet.nets.pytorch_backend.nets_utils import make_pad_mask
 from espnet.nets.pytorch_backend.nets_utils import to_device
 
+import damped
+
 
 class RNNP(torch.nn.Module):
     """RNN with projection layer module
@@ -241,6 +243,19 @@ class Encoder(torch.nn.Module):
                 self.enc = torch.nn.ModuleList([RNN(idim, elayers, eunits, eprojs, dropout, typ=typ)])
                 logging.info(typ.upper() + ' without projection for encoder')
 
+        # pchampio create branchs at each encoder step
+        self.gender_branchs = []
+        self.spk_branchs = []
+        # !WARNN carefully crafted for vggblstm with 3 encoder layers
+        offset_gender = 3
+        offset_spk = 6
+        enc_type = ["VGG2L", "LSTM_l1", "LSTM_l2"]
+        for l in range(3):
+            self.gender_branchs.append(damped.disturb.DomainTask(name="gender", to_rank=offset_gender + l))
+            self.spk_branchs.append(damped.disturb.DomainTask(name="speaker", to_rank=offset_spk + l))
+            print(f"=== damped.disturb: layer {l}-{enc_type[l]} " +
+                  f" branches out to: Gender:{offset_gender + l} and Spk:{offset_spk + l}")
+
     def forward(self, xs_pad, ilens, prev_states=None):
         """Encoder forward
 
@@ -254,10 +269,50 @@ class Encoder(torch.nn.Module):
             prev_states = [None] * len(self.enc)
         assert len(prev_states) == len(self.enc)
 
+        # pchampio get the spkid label
+        def _codec(x):
+            return damped.utils.str_int_encoder.encode(x.split("-")[0])
+
+        uttid_list = []
+        for i in range(len(xs_pad)):
+            key = xs_pad[i][0][:3].clone().detach().float()
+
+            uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(
+                key,
+                codec=_codec,
+                delete=False
+            )
+            uttid_list.append(uttid)
+
+        module_index = 0
+        requests = []
+        # End pchampio
+
         current_states = []
         for module, prev_state in zip(self.enc, prev_states):
             xs_pad, ilens, states = module(xs_pad, ilens, prev_state=prev_state)
             current_states.append(states)
+
+            # for the vgg get the output of the last layer
+            shared = xs_pad
+
+            #  pass
+        #  if module.__class__.__name__ == "RNN":
+
+        # pchampio send the hidden state to domain task-s (async)
+            requests.append(self.gender_branchs[module_index].fork_detach(
+                shared.cpu(),
+                torch.tensor(uttid_list, dtype=torch.long),
+                dtype=(torch.float32, torch.long)
+            ))
+            requests.append(self.spk_branchs[module_index].fork_detach(
+                shared.cpu(),
+                torch.tensor(uttid_list, dtype=torch.long),
+                dtype=(torch.float32, torch.long)
+            ))
+            module_index += 1
+        [req.wait() for req in requests]
+        # End pchampio
 
         # make mask to remove bias value in padded part
         mask = to_device(self, make_pad_mask(ilens).unsqueeze(-1))

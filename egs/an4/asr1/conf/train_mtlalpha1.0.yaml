@@ -12,11 +12,11 @@ patience: 3
 sampling-probability: 0.0
 
 # encoder related
-etype: blstmp     # encoder architecture type
-elayers: 2
+etype: vggblstm     # encoder architecture type
+elayers: 3
 eunits: 50
 eprojs: 50
-subsample: "1_2" # skip every n frame from input to nth layers
+subsample: "1_1_1" # skip every n frame from input to nth layers
 # decoder related
 dlayers: 1
 dunits: 100
