@@ -253,7 +253,7 @@ class Encoder(torch.nn.Module):
         for l in range(3):
             self.gender_branchs.append(damped.disturb.DomainTask(name="gender", to_rank=offset_gender + l))
             self.spk_branchs.append(damped.disturb.DomainTask(name="speaker", to_rank=offset_spk + l))
-            print(f"=== damped.disturb: layer {l}-{enc_type[l]} " +
+            print(f"=== damped.disturb: layer {l}-{enc_type[l]}" +
                   f" branches out to: Gender:{offset_gender + l} and Spk:{offset_spk + l}")
 
     def forward(self, xs_pad, ilens, prev_states=None):
@@ -293,11 +293,11 @@ class Encoder(torch.nn.Module):
             xs_pad, ilens, states = module(xs_pad, ilens, prev_state=prev_state)
             current_states.append(states)
 
+            #  if module.__class__.__name__ == "RNN":
+                #  print(current_states[-1][-1])
+
             # for the vgg get the output of the last layer
             shared = xs_pad
-
-            #  pass
-        #  if module.__class__.__name__ == "RNN":
 
         # pchampio send the hidden state to domain task-s (async)
             requests.append(self.gender_branchs[module_index].fork_detach(
