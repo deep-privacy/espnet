@@ -6,7 +6,7 @@
 . ./path.sh || exit 1;
 . ./cmd.sh || exit 1;
 
-damped_n_domain=8
+damped_n_domain=4
 
 # general configuration
 backend=pytorch

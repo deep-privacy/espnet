@@ -244,17 +244,17 @@ class Encoder(torch.nn.Module):
                 logging.info(typ.upper() + ' without projection for encoder')
 
         # pchampio create branchs at each encoder step
+        # WARNN Only one step (VGG2L) for now
         self.gender_branchs = []
         self.spk_branchs = []
-        # !WARNN carefully crafted for vggblstm with 3 encoder layers
+
+        # !WARNN carefully crafted for vggblstm
         offset_gender = 3
-        offset_spk = 6
-        enc_type = ["VGG2L", "LSTM_l1", "LSTM_l2"]
-        for l in range(3):
-            self.gender_branchs.append(damped.disturb.DomainTask(name="gender", to_rank=offset_gender + l))
-            self.spk_branchs.append(damped.disturb.DomainTask(name="speaker", to_rank=offset_spk + l))
-            print(f"=== damped.disturb: layer {l}-{enc_type[l]}" +
-                  f" branches out to: Gender:{offset_gender + l} and Spk:{offset_spk + l}")
+        offset_spk = 4
+        self.gender_branchs.append(damped.disturb.DomainTask(name="gender", to_rank=offset_gender))
+        self.spk_branchs.append(damped.disturb.DomainTask(name="speaker", to_rank=offset_spk))
+        print(f"=== damped.disturb: layer 1-VGG2L" +
+              f" branches out to: Gender:{offset_gender} and Spk:{offset_spk}")
 
     def forward(self, xs_pad, ilens, prev_states=None):
         """Encoder forward
@@ -293,24 +293,22 @@ class Encoder(torch.nn.Module):
             xs_pad, ilens, states = module(xs_pad, ilens, prev_state=prev_state)
             current_states.append(states)
 
-            #  if module.__class__.__name__ == "RNN":
-                #  print(current_states[-1][-1])
-
             # for the vgg get the output of the last layer
             shared = xs_pad
 
-        # pchampio send the hidden state to domain task-s (async)
-            requests.append(self.gender_branchs[module_index].fork_detach(
-                shared.cpu(),
-                torch.tensor(uttid_list, dtype=torch.long),
-                dtype=(torch.float32, torch.long)
-            ))
-            requests.append(self.spk_branchs[module_index].fork_detach(
-                shared.cpu(),
-                torch.tensor(uttid_list, dtype=torch.long),
-                dtype=(torch.float32, torch.long)
-            ))
-            module_index += 1
+            if module.__class__.__name__ == "VGG2L":
+                # pchampio send the hidden state to domain task-s (async)
+                requests.append(self.gender_branchs[module_index].fork_detach(
+                    shared.cpu(),
+                    torch.tensor(uttid_list, dtype=torch.long),
+                    dtype=(torch.float32, torch.long)
+                ))
+                requests.append(self.spk_branchs[module_index].fork_detach(
+                    shared.cpu(),
+                    torch.tensor(uttid_list, dtype=torch.long),
+                    dtype=(torch.float32, torch.long)
+                ))
+                module_index += 1
         [req.wait() for req in requests]
         # End pchampio
 
