@@ -488,6 +488,12 @@ class E2E(ASRInterface, torch.nn.Module):
                                           torch.tensor(uttid_list, dtype=torch.long),
                                           dtype=(torch.float32, torch.long)
                                           )
+        req2 = self.spk_branch.fork_detach(hs_pad.cpu(),
+                                           torch.tensor(uttid_list, dtype=torch.long),
+                                           dtype=(torch.float32, torch.long)
+                                           )
+
+        req2.wait()
         req.wait()
         # End pchampio
 

@@ -6,6 +6,8 @@
 . ./path.sh || exit 1;
 . ./cmd.sh || exit 1;
 
+damped_n_domain=2
+
 # general configuration
 backend=pytorch
 stage=0       # start from -1 if you need to start from data download
@@ -215,22 +217,27 @@ mkdir -p ${expdir}
 if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
     echo "stage 4: Network Training"
     ${cuda_cmd} --gpu ${ngpu} ${expdir}/train.log \
-        asr_train.py \
+        DAMPED_N_DOMAIN=$damped_n_domain asr_train.py \
         --config ${train_config} \
         --preprocess-conf ${preprocess_config} \
         --ngpu ${ngpu} \
         --backend ${backend} \
-        --n-iter-processes 8 \
+        --n-iter-processes 16 \
         --outdir ${expdir}/results \
         --tensorboard-dir tensorboard/${expname} \
+        --patience 1000 \
         --debugmode ${debugmode} \
         --dict ${dict} \
         --debugdir ${expdir} \
         --minibatches ${N} \
         --verbose ${verbose} \
         --resume ${expdir}/results/${resume} \
-        --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.json \
-        --valid-json ${feat_dt_dir}/data_${bpemode}${nbpe}.json
+        --report-interval-iters 5000 \
+        --train-json ./dump/split_utt_spk/data_unigram5000.train.json \
+        --valid-json ./dump/split_utt_spk/data_unigram5000.dev.json
+
+        # --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.json \ # used to train ASR (up to epoch 12)
+        # --valid-json ${feat_dt_dir}/data_${bpemode}${nbpe}.json
 fi
 
 if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
@@ -271,7 +278,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     pids=() # initialize pids
     recog_set="test_clean test_other dev_clean dev_other"
     recog_set="test_clean"
-    recog_set="test_other"
+    # recog_set="test_other"
     for rtask in ${recog_set}; do
     (
         decode_dir=decode_${rtask}_${recog_model}_$(basename ${decode_config%.*})_${lmtag}
@@ -294,15 +301,17 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
 
         # set batchsize 0 to disable batch decoding
         ${decode_cmd} JOB=1:${nj} ${expdir}/${decode_dir}/log/decode.JOB.log \
-            env CUDA_VISIBLE_DEVICES=${#pids[@]} asr_recog.py \
+            CUDA_VISIBLE_DEVICES=${#pids[@]} DAMPED_N_DOMAIN=$damped_n_domain asr_recog.py \
             --config ${decode_config} \
             --ngpu ${ngpu} \
             --backend ${backend} \
             --batchsize 2 \
-            --recog-json ${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
+            --recog-json ./dump/split_utt_spk/data_unigram5000.test.json \
             --result-label ${expdir}/${decode_dir}/data.JOB.json \
             --model ${expdir}/results/${recog_model}  \
             --rnnlm ${lmexpdir}/${lang_model}
+
+            # --recog-json ${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
 
         score_sclite.sh --bpe ${nbpe} --bpemodel ${bpemodel}.model --wer true ${expdir}/${decode_dir} ${dict}
 

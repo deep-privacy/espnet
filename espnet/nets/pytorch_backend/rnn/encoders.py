@@ -249,12 +249,12 @@ class Encoder(torch.nn.Module):
         self.spk_branchs = []
 
         # !WARNN carefully crafted for vggblstm
-        offset_gender = 3
-        offset_spk = 4
-        self.gender_branchs.append(damped.disturb.DomainTask(name="gender", to_rank=offset_gender))
-        self.spk_branchs.append(damped.disturb.DomainTask(name="speaker", to_rank=offset_spk))
-        print(f"=== damped.disturb: layer 1-VGG2L" +
-              f" branches out to: Gender:{offset_gender} and Spk:{offset_spk}")
+        #  offset_gender = 3
+        #  offset_spk = 4
+        #  self.gender_branchs.append(damped.disturb.DomainTask(name="gender", to_rank=offset_gender))
+        #  self.spk_branchs.append(damped.disturb.DomainTask(name="speaker", to_rank=offset_spk))
+        #  print(f"=== damped.disturb: layer 1-VGG2L" +
+              #  f" branches out to: Gender:{offset_gender} and Spk:{offset_spk}")
 
     def forward(self, xs_pad, ilens, prev_states=None):
         """Encoder forward
@@ -270,22 +270,22 @@ class Encoder(torch.nn.Module):
         assert len(prev_states) == len(self.enc)
 
         # pchampio get the spkid label
-        def _codec(x):
-            return damped.utils.str_int_encoder.encode(x.split("-")[0])
+        #  def _codec(x):
+            #  return damped.utils.str_int_encoder.encode(x.split("-")[0])
 
-        uttid_list = []
-        for i in range(len(xs_pad)):
-            key = xs_pad[i][0][:3].clone().detach().float()
+        #  uttid_list = []
+        #  for i in range(len(xs_pad)):
+            #  key = xs_pad[i][0][:3].clone().detach().float()
 
-            uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(
-                key,
-                codec=_codec,
-                delete=False
-            )
-            uttid_list.append(uttid)
+            #  uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(
+                #  key,
+                #  codec=_codec,
+                #  delete=False
+            #  )
+            #  uttid_list.append(uttid)
 
-        module_index = 0
-        requests = []
+        #  module_index = 0
+        #  requests = []
         # End pchampio
 
         current_states = []
@@ -294,22 +294,22 @@ class Encoder(torch.nn.Module):
             current_states.append(states)
 
             # for the vgg get the output of the last layer
-            shared = xs_pad
+            #  shared = xs_pad
 
-            if module.__class__.__name__ == "VGG2L":
-                # pchampio send the hidden state to domain task-s (async)
-                requests.append(self.gender_branchs[module_index].fork_detach(
-                    shared.cpu(),
-                    torch.tensor(uttid_list, dtype=torch.long),
-                    dtype=(torch.float32, torch.long)
-                ))
-                requests.append(self.spk_branchs[module_index].fork_detach(
-                    shared.cpu(),
-                    torch.tensor(uttid_list, dtype=torch.long),
-                    dtype=(torch.float32, torch.long)
-                ))
-                module_index += 1
-        [req.wait() for req in requests]
+            #  if module.__class__.__name__ == "VGG2L":
+                #  # pchampio send the hidden state to domain task-s (async)
+                #  requests.append(self.gender_branchs[module_index].fork_detach(
+                    #  shared.cpu(),
+                    #  torch.tensor(uttid_list, dtype=torch.long),
+                    #  dtype=(torch.float32, torch.long)
+                #  ))
+                #  requests.append(self.spk_branchs[module_index].fork_detach(
+                    #  shared.cpu(),
+                    #  torch.tensor(uttid_list, dtype=torch.long),
+                    #  dtype=(torch.float32, torch.long)
+                #  ))
+                #  module_index += 1
+        #  [req.wait() for req in requests]
         # End pchampio
 
         # make mask to remove bias value in padded part
