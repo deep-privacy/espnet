@@ -224,7 +224,8 @@ class E2E(ASRInterface, torch.nn.Module):
         self.acc = None
 
         self.gender_branch = damped.disturb.DomainTask(name="gender_classif", to_rank=1)
-        self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=2)
+        self.spk_branch_grad = damped.disturb.DomainTask(name="speaker_identificaion_grad_rev", to_rank=2)
+        self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=3)
         print(f"=== damped.disturb: layer 3-LSTM_l3-tanh-fc branches out to: Gender:1 and Spk:2")
 
     def init_like_chainer(self):
@@ -286,6 +287,18 @@ class E2E(ASRInterface, torch.nn.Module):
                                            torch.tensor(uttid_list, dtype=torch.long),
                                            dtype=(torch.float32, torch.long)
                                            )
+
+        spk_backgrad = self.spk_branch_grad.fork_recv_grad(hs_pad.cpu(),
+                                                torch.tensor(uttid_list, dtype=torch.long),
+                                                dtype=(torch.float32, torch.long)
+                                                )
+
+        if hs_pad.requires_grad:
+            #  retain_graph=True is required:
+            #   PyTorch throws away the intermediate computation graph after
+            #   backward() call, so later calls don't have any graph to
+            #   backpropagate to.
+            hs_pad.backward(spk_backgrad.to(hs_pad.device), retain_graph=True)
 
         # End pchampio
 
@@ -493,6 +506,12 @@ class E2E(ASRInterface, torch.nn.Module):
                                            dtype=(torch.float32, torch.long)
                                            )
 
+        req3 = self.spk_branch_grad.fork_detach(hs_pad.cpu(),
+                                           torch.tensor(uttid_list, dtype=torch.long),
+                                           dtype=(torch.float32, torch.long)
+                                           )
+
+        req3.wait()
         req2.wait()
         req.wait()
         # End pchampio
