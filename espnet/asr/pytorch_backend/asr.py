@@ -639,6 +639,7 @@ def recog(args):
 
     Args:
         args (namespace): The program arguments.
+
     """
     set_deterministic_pytorch(args)
     model, train_args = load_trained_model(args.model)
