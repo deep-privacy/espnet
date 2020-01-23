@@ -211,6 +211,7 @@ if [ -z ${tag} ]; then
 else
     expname=${train_set}_${backend}_${tag}
 fi
+# expname+="_2"
 expdir=exp/${expname}
 mkdir -p ${expdir}
 
@@ -225,14 +226,12 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --n-iter-processes 16 \
         --outdir ${expdir}/results \
         --tensorboard-dir tensorboard/${expname} \
-        --patience 1000 \
         --debugmode ${debugmode} \
         --dict ${dict} \
         --debugdir ${expdir} \
         --minibatches ${N} \
         --verbose ${verbose} \
         --resume ${expdir}/results/${resume} \
-        --report-interval-iters 5000 \
         --train-json ./dump/split_utt_spk/data_unigram5000.train.json \
         --valid-json ./dump/split_utt_spk/data_unigram5000.dev.json
 

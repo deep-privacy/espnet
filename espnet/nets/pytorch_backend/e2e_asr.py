@@ -226,7 +226,6 @@ class E2E(ASRInterface, torch.nn.Module):
         self.gender_branch = damped.disturb.DomainTask(name="gender_classif", to_rank=1)
         self.spk_branch_grad = damped.disturb.DomainTask(name="speaker_identificaion_grad_rev", to_rank=2)
         self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=3)
-        print(f"=== damped.disturb: layer 3-LSTM_l3-tanh-fc branches out to: Gender:1 and Spk:2")
 
     def init_like_chainer(self):
         """Initialize weight like chainer.
