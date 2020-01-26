@@ -272,6 +272,16 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --out ${lmexpdir}/${lang_model} \
             --num ${lm_n_average}
     fi
+
+    resume=snapshot.ep.16        # Resume the training from snapshot
+    opt="--log ${expdir}/results/log"
+    average_checkpoints.py \
+        ${opt} \
+        --backend ${backend} \
+        --snapshots ${expdir}/results/${resume} \
+        --out ${expdir}/results/${recog_model} \
+        --num 1
+
     nj=1
 
     pids=() # initialize pids
