@@ -136,6 +136,12 @@ class CustomEvaluator(BaseEvaluator):
                 summary.add(observation)
         self.model.train()
         disturb.train()
+        if self.model.total_target != 0:
+            accuracy = (self.model.total_correct / self.model.total_target) * 100
+            print("Accuracy domain task:", accuracy)
+
+        print("Correct:", self.model.total_correct)
+        print("Total taget:", self.model.total_target)
 
         return summary.compute_mean()
 
@@ -429,7 +435,7 @@ def train(args):
             model.parameters(), rho=0.95, eps=args.eps,
             weight_decay=args.weight_decay)
     elif args.opt == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(),
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.00025,
                                      weight_decay=args.weight_decay)
     elif args.opt == 'noam':
         from espnet.nets.pytorch_backend.transformer.optimizer import get_std_opt

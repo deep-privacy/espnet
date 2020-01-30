@@ -6,7 +6,7 @@
 . ./path.sh || exit 1;
 . ./cmd.sh || exit 1;
 
-damped_n_domain=2
+damped_n_domain=1
 
 # general configuration
 backend=pytorch
@@ -218,7 +218,7 @@ mkdir -p ${expdir}
 if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
     echo "stage 4: Network Training"
     ${cuda_cmd} --gpu ${ngpu} ${expdir}/train.log \
-        DAMPED_N_DOMAIN=$damped_n_domain asr_train.py \
+        DAMPED_D_task='spk' DAMPED_N_DOMAIN=$damped_n_domain asr_train.py \
         --config ${train_config} \
         --preprocess-conf ${preprocess_config} \
         --ngpu ${ngpu} \
@@ -272,22 +272,12 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --out ${lmexpdir}/${lang_model} \
             --num ${lm_n_average}
     fi
-
-    resume=snapshot.ep.16        # Resume the training from snapshot
-    opt="--log ${expdir}/results/log"
-    average_checkpoints.py \
-        ${opt} \
-        --backend ${backend} \
-        --snapshots ${expdir}/results/${resume} \
-        --out ${expdir}/results/${recog_model} \
-        --num 1
-
     nj=1
 
     pids=() # initialize pids
     recog_set="test_clean test_other dev_clean dev_other"
     recog_set="test_clean"
-    # recog_set="test_other"
+    recog_set="test_other"
     for rtask in ${recog_set}; do
     (
         decode_dir=decode_${rtask}_${recog_model}_$(basename ${decode_config%.*})_${lmtag}
@@ -310,16 +300,17 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
 
         # set batchsize 0 to disable batch decoding
         ${decode_cmd} JOB=1:${nj} ${expdir}/${decode_dir}/log/decode.JOB.log \
-            CUDA_VISIBLE_DEVICES=${#pids[@]} DAMPED_N_DOMAIN=$damped_n_domain asr_recog.py \
+            DAMPED_D_task='spk' CUDA_VISIBLE_DEVICES=${#pids[@]} DAMPED_N_DOMAIN=$damped_n_domain asr_recog.py \
             --config ${decode_config} \
             --ngpu ${ngpu} \
             --backend ${backend} \
             --batchsize 2 \
-            --recog-json ./dump/split_utt_spk/data_unigram5000.test.json \
+            --recog-json ${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
             --result-label ${expdir}/${decode_dir}/data.JOB.json \
-            --model ${expdir}/results/${recog_model}  \
+            --model ${expdir}/results/snapshot.ep.23  \
             --rnnlm ${lmexpdir}/${lang_model}
 
+            # --recog-json ./dump/split_utt_spk/data_unigram5000.test.json \
             # --recog-json ${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
 
         score_sclite.sh --bpe ${nbpe} --bpemodel ${bpemodel}.model --wer true ${expdir}/${decode_dir} ${dict}

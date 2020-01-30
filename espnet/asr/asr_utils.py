@@ -544,12 +544,12 @@ def torch_resume(snapshot_path, trainer):
     else:
         # (for ASR model)
         if hasattr(trainer.updater.model, "module"):
-            trainer.updater.model.module.load_state_dict(snapshot_dict['model'])
+            trainer.updater.model.module.load_state_dict(snapshot_dict['model'], strict=False)
         else:
-            trainer.updater.model.load_state_dict(snapshot_dict['model'])
+            trainer.updater.model.load_state_dict(snapshot_dict['model'], strict=False)
 
     # retore optimizer states
-    trainer.updater.get_optimizer('main').load_state_dict(snapshot_dict['optimizer'])
+    #  trainer.updater.get_optimizer('main').load_state_dict(snapshot_dict['optimizer'])
 
     # delete opened snapshot
     del snapshot_dict
