@@ -318,8 +318,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --recog-json ./dump/split_utt_spk/data_unigram5000.test.json \
             --result-label ${expdir}/${decode_dir}/data.JOB.json \
             --model ${expdir}/results/${recog_model}  \
-            --rnnlm ${lmexpdir}/${lang_model} \
-            --api v2
+            --rnnlm ${lmexpdir}/${lang_model}
 
             # --recog-json ./dump/split_utt_spk/data_unigram5000.test.json \
             # --recog-json ${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
