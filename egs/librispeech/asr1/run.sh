@@ -15,15 +15,15 @@ stop_stage=100
 ngpu=4         # number of gpus ("0" uses cpu, otherwise use gpu)
 debugmode=1
 dumpdir=dump   # directory to dump full features
-resume=snapshot.ep.12           # Resume the training from snapshot
 N=0            # number of minibatches to be used (mainly for debugging). "0" uses all minibatches.
 verbose=0      # verbose option
+resume=snapshot.ep.12        # Resume the training from snapshot
 
 # feature configuration
 do_delta=false
 
-# preprocess_config=conf/specaug.yaml
-preprocess_config=
+preprocess_config=conf/specaug.yaml
+# preprocess_config=
 train_config=conf/train.yaml # current default recipe requires 4 gpus.
                              # if you do not have 4 gpus, please reconfigure the `batch-bins` and `accum-grad` parameters in config.
 lm_config=conf/lm.yaml
@@ -205,20 +205,20 @@ if [ -z ${tag} ]; then
     if ${do_delta}; then
         expname=${expname}_delta
     fi
-    if [ -n "${preprocess_config}" ]; then
-        expname=${expname}_$(basename ${preprocess_config%.*})
-    fi
+    # if [ -n "${preprocess_config}" ]; then
+        # expname=${expname}_$(basename ${preprocess_config%.*})
+    # fi
 else
     expname=${train_set}_${backend}_${tag}
 fi
-# expname+="_2"
+expname+="_3"
 expdir=exp/${expname}
 mkdir -p ${expdir}
 
 if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
     echo "stage 4: Network Training"
     ${cuda_cmd} --gpu ${ngpu} ${expdir}/train.log \
-        DAMPED_D_task='spk' DAMPED_N_DOMAIN=$damped_n_domain asr_train.py \
+        DAMPED_no_backward='yes' DAMPED_D_task='gender' DAMPED_N_DOMAIN=$damped_n_domain asr_train.py \
         --config ${train_config} \
         --preprocess-conf ${preprocess_config} \
         --ngpu ${ngpu} \
@@ -277,7 +277,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     pids=() # initialize pids
     recog_set="test_clean test_other dev_clean dev_other"
     recog_set="test_clean"
-    recog_set="test_other"
+    # recog_set="test_other"
     for rtask in ${recog_set}; do
     (
         decode_dir=decode_${rtask}_${recog_model}_$(basename ${decode_config%.*})_${lmtag}
@@ -298,16 +298,19 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         # NOTE(pchampio): Tweak the batchsize (min: 1) relative the amount of G-RAM available
         # 'batchsize 2' -> 12G of G-RAM
 
+        GPU_u=${#pids[@]}
+        GPU_u=1
+
         # set batchsize 0 to disable batch decoding
         ${decode_cmd} JOB=1:${nj} ${expdir}/${decode_dir}/log/decode.JOB.log \
-            DAMPED_D_task='spk' CUDA_VISIBLE_DEVICES=${#pids[@]} DAMPED_N_DOMAIN=$damped_n_domain asr_recog.py \
+            DAMPED_D_task='gender' DAMPED_no_backward='yes' CUDA_VISIBLE_DEVICES=$GPU_u DAMPED_N_DOMAIN=$damped_n_domain asr_recog.py \
             --config ${decode_config} \
             --ngpu ${ngpu} \
             --backend ${backend} \
             --batchsize 2 \
-            --recog-json ${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
+            --recog-json ./dump/split_utt_spk/data_unigram5000.test.json \
             --result-label ${expdir}/${decode_dir}/data.JOB.json \
-            --model ${expdir}/results/snapshot.ep.30  \
+            --model ${expdir}/results/snapshot.ep.12  \
             --rnnlm ${lmexpdir}/${lang_model}
 
             # --recog-json ./dump/split_utt_spk/data_unigram5000.test.json \

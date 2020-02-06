@@ -28,7 +28,7 @@ dropout-rate: 0.2
 # optimization related
 sortagrad: 0 # Feed samples from shortest to longest ; -1: enabled for all epochs, 0: disabled, other: enabled for 'other' epochs
 opt: adadelta
-epochs: 23
+epochs: 22
 patience: 1000
 
 # scheduled sampling option

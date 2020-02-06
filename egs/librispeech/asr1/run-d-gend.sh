@@ -6,7 +6,7 @@
 . ./path.sh || exit 1;
 . ./cmd.sh || exit 1;
 
-damped_n_domain=1
+damped_n_domain=2
 
 # general configuration
 backend=pytorch
@@ -17,7 +17,7 @@ debugmode=1
 dumpdir=dump   # directory to dump full features
 N=0            # number of minibatches to be used (mainly for debugging). "0" uses all minibatches.
 verbose=0      # verbose option
-resume=snapshot.ep.12        # Resume the training from snapshot
+resume=snapshot.ep.12           # Resume the training from snapshot
 
 # feature configuration
 do_delta=false
@@ -305,9 +305,9 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --ngpu ${ngpu} \
             --backend ${backend} \
             --batchsize 2 \
-            --recog-json ./dump/split_utt_spk/data_unigram5000.test.json \
+            --recog-json ${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
             --result-label ${expdir}/${decode_dir}/data.JOB.json \
-            --model ${expdir}/results/snapshot.ep.22  \
+            --model ${expdir}/results/snapshot.ep.28  \
             --rnnlm ${lmexpdir}/${lang_model}
 
             # --recog-json ./dump/split_utt_spk/data_unigram5000.test.json \

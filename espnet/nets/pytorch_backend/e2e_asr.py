@@ -237,9 +237,6 @@ class E2E(ASRInterface, torch.nn.Module):
         self.spk_branch_grad_criterion = torch.nn.CrossEntropyLoss()
         self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=2)
 
-        self.total_correct = 0
-        self.total_target = 0
-
     def init_like_chainer(self):
         """Initialize weight like chainer.
 
@@ -300,7 +297,7 @@ class E2E(ASRInterface, torch.nn.Module):
                                            dtype=(torch.float32, torch.long)
                                            )
 
-        #  hs_pad = damped.nets.GradientReverse.apply(hs_pad)
+        hs_pad = damped.nets.GradientReverse.apply(hs_pad)
         y_pred = self.spk_branch_grad(hs_pad)
         spk_branch_grad_loss = self.spk_branch_grad_criterion(
             y_pred,
@@ -414,7 +411,7 @@ class E2E(ASRInterface, torch.nn.Module):
             self.reporter.report(loss_ctc_data, loss_att_data, acc, cer_ctc, cer, wer, loss_data)
         else:
             logging.warning('loss (=%f) is not correct', loss_data)
-        return (0.3*self.loss) + (0.7*spk_branch_grad_loss)
+        return (0.2*self.loss) + (0.8*spk_branch_grad_loss)
 
     def scorers(self):
         """Scorers."""
@@ -514,13 +511,13 @@ class E2E(ASRInterface, torch.nn.Module):
                                              torch.tensor(uttid_list, dtype=torch.long),
                                              dtype=(torch.float32, torch.long)
                                              )
-        #  req2 = self.spk_branch.fork_detach(hs_pad.cpu(),
-                                           #  torch.tensor(uttid_list, dtype=torch.long),
-                                           #  dtype=(torch.float32, torch.long)
-                                           #  )
+        req2 = self.spk_branch.fork_detach(hs_pad.cpu(),
+                                           torch.tensor(uttid_list, dtype=torch.long),
+                                           dtype=(torch.float32, torch.long)
+                                           )
 
 
-        #  req2.wait()
+        req2.wait()
         req.wait()
         # End pchampio
 

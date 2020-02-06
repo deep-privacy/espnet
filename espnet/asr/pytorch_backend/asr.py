@@ -136,13 +136,6 @@ class CustomEvaluator(BaseEvaluator):
                 summary.add(observation)
         self.model.train()
         disturb.train()
-        if self.model.total_target != 0:
-            accuracy = (self.model.total_correct / self.model.total_target) * 100
-            print("Accuracy domain task:", accuracy)
-
-        print("Correct:", self.model.total_correct)
-        print("Total taget:", self.model.total_target)
-
         return summary.compute_mean()
 
 
@@ -174,6 +167,11 @@ class CustomUpdater(StandardUpdater):
         self.iteration = 0
         self.use_apex = use_apex
 
+        if 'DAMPED_no_backward' not in os.environ:
+            print("-- Damped: backprop activated!")
+        else:
+            print("-- Damped: backprop ignored!")
+
     # The core part of the update routine can be customized by overriding.
     def update_core(self):
         """Main update routine of the CustomUpdater."""
@@ -199,6 +197,10 @@ class CustomUpdater(StandardUpdater):
         else:
             # apex does not support torch.nn.DataParallel
             loss = data_parallel(self.model, x, range(self.ngpu)).mean() / self.accum_grad
+
+        if 'DAMPED_no_backward' in os.environ:
+            return
+
         if self.use_apex:
             from apex import amp
             # NOTE: for a compatibility with noam optimizer
