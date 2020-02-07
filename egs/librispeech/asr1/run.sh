@@ -6,7 +6,7 @@
 . ./path.sh || exit 1;
 . ./cmd.sh || exit 1;
 
-damped_n_domain=2
+damped_n_domain=1
 
 # general configuration
 backend=pytorch
@@ -168,7 +168,7 @@ fi
 if [ -z ${lmtag} ]; then
     lmtag=$(basename ${lm_config%.*})
 fi
-lmexpname=train_rnnlm_${backend}_${lmtag}_${bpemode}${nbpe}_ngpu${ngpu}
+lmexpname=train_rnnlm_${backend}_${lmtag}_${bpemode}${nbpe}
 lmexpdir=exp/${lmexpname}
 mkdir -p ${lmexpdir}
 
@@ -221,7 +221,7 @@ mkdir -p ${expdir}
 if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
     echo "stage 4: Network Training"
     ${cuda_cmd} --gpu ${ngpu} ${expdir}/train.log \
-        DAMPED_no_backward='yes' DAMPED_D_task='gender' DAMPED_N_DOMAIN=$damped_n_domain asr_train.py \
+        DAMPED_D_task='spk' DAMPED_N_DOMAIN=$damped_n_domain asr_train.py \
         --config ${train_config} \
         --preprocess-conf ${preprocess_config} \
         --ngpu ${ngpu} \
@@ -310,7 +310,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
 
         # set batchsize 0 to disable batch decoding
         ${decode_cmd} JOB=1:${nj} ${expdir}/${decode_dir}/log/decode.JOB.log \
-            DAMPED_D_task='gender' DAMPED_no_backward='yes' CUDA_VISIBLE_DEVICES=$GPU_u DAMPED_N_DOMAIN=$damped_n_domain asr_recog.py \
+            DAMPED_D_task='spk' CUDA_VISIBLE_DEVICES=$GPU_u DAMPED_N_DOMAIN=$damped_n_domain asr_recog.py \
             --config ${decode_config} \
             --ngpu ${ngpu} \
             --backend ${backend} \

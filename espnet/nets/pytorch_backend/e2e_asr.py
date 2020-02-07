@@ -225,17 +225,11 @@ class E2E(ASRInterface, torch.nn.Module):
         self.loss = None
         self.acc = None
 
-        self.gender_branch = damped.disturb.DomainTask(name="gender_classif", to_rank=1)
-        if os.environ['DAMPED_D_task'] == "gender": # Gender
-            print("Domain task Gender", flush=True)
-            self.spk_branch_grad = damped_nets.BrijSpeakerXvector(2, 1024, 512, 3, 0.2)
-            self.spk_branch_mapper = damped_utils.gender_mapper("/home/pchampion/lab/damped/egs/librispeech/gender/data")
-        else: # SPK
-            print("Domain task Speaker", flush=True)
-            self.spk_branch_grad = damped_nets.BrijSpeakerXvector(251, 1024, 512, 3, 0.2)
-            self.spk_branch_mapper = damped_utils.spkid_mapper("/home/pchampion/lab/damped/egs/librispeech/spk_identif/data")
+        self.spk_branch_grad = damped_nets.BrijSpeakerXvector(251, 1024, 512, 3, 0.2)
+        self.spk_branch_mapper = damped_utils.spkid_mapper("/home/pchampion/lab/damped/egs/librispeech/spk_identif/data")
+
         self.spk_branch_grad_criterion = torch.nn.CrossEntropyLoss()
-        self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=2)
+        self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=1)
 
     def init_like_chainer(self):
         """Initialize weight like chainer.
@@ -297,6 +291,7 @@ class E2E(ASRInterface, torch.nn.Module):
                                            dtype=(torch.float32, torch.long)
                                            )
 
+        damped.nets.GradientReverse.scale = 10
         hs_pad = damped.nets.GradientReverse.apply(hs_pad)
         y_pred = self.spk_branch_grad(hs_pad)
         spk_branch_grad_loss = self.spk_branch_grad_criterion(
