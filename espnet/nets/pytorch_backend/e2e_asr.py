@@ -282,10 +282,6 @@ class E2E(ASRInterface, torch.nn.Module):
             uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
             uttid_list.append(uttid)
 
-        req = self.gender_branch.fork_detach(hs_pad.cpu(),
-                                             torch.tensor(uttid_list, dtype=torch.long),
-                                             dtype=(torch.float32, torch.long)
-                                             )
         req2 = self.spk_branch.fork_detach(hs_pad.cpu(),
                                            torch.tensor(uttid_list, dtype=torch.long),
                                            dtype=(torch.float32, torch.long)
@@ -321,12 +317,11 @@ class E2E(ASRInterface, torch.nn.Module):
         self.acc = acc
 
         # 3,5. pchampio wait for domain branch to fully have received the hidden state
-        req.wait()
         req2.wait()
         # End pchampio
 
         # 4. compute cer without beam search
-        if self.mtlalpha == 0 or self.char_list is None:
+        if True or self.mtlalpha == 0 or self.char_list is None:
             cer_ctc = None
         else:
             cers = []
@@ -502,10 +497,6 @@ class E2E(ASRInterface, torch.nn.Module):
             uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
             uttid_list.append(uttid)
 
-        req = self.gender_branch.fork_detach(hs_pad.cpu(),
-                                             torch.tensor(uttid_list, dtype=torch.long),
-                                             dtype=(torch.float32, torch.long)
-                                             )
         req2 = self.spk_branch.fork_detach(hs_pad.cpu(),
                                            torch.tensor(uttid_list, dtype=torch.long),
                                            dtype=(torch.float32, torch.long)
@@ -513,7 +504,6 @@ class E2E(ASRInterface, torch.nn.Module):
 
 
         req2.wait()
-        req.wait()
         # End pchampio
 
         # calculate log P(z_t|X) for CTC scores
