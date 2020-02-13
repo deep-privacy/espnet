@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2019 Kyoto University (Hirofumi Inaguma)
+# Copyright 2020 Kyoto University (Hirofumi Inaguma)
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 . ./path.sh || exit 1;
@@ -8,10 +8,10 @@
 
 # general configuration
 backend=pytorch # chainer or pytorch
-stage=0         # start from -1 if you need to start from data download
+stage=-1        # start from -1 if you need to start from data download
 stop_stage=100
 ngpu=1          # number of gpus ("0" uses cpu, otherwise use gpu)
-nj=16           # numebr of parallel jobs for decoding
+nj=32           # number of parallel jobs for decoding
 debugmode=1
 dumpdir=dump    # directory to dump full features
 N=0             # number of minibatches to be used (mainly for debugging). "0" uses all minibatches.
@@ -39,24 +39,10 @@ mt_model=
 
 # preprocessing related
 src_case=lc.rm
-tgt_case=tc
+tgt_case=lc
 # tc: truecase
 # lc: lowercase
 # lc.rm: lowercase with punctuation removal
-
-# Set this to somewhere where you want to put your data, or where
-# someone else has already put it.  You'll want to change this
-# if you're not on the CLSP grid.
-# how2=/export/a13/kduh/mtdata/how2/how2-300h-v1
-how2=/n/rd8/how2/how2-300h-v1
-# how2-300h-v1
-#  |_ data/
-#  |_ features/
-#    |_ fbank_pitch_181516/
-
-# bpemode (unigram or bpe)
-nbpe=8000
-bpemode=bpe
 
 # exp tag
 tag="" # tag for managing experiments.
@@ -69,15 +55,19 @@ set -e
 set -u
 set -o pipefail
 
-train_set=train.pt
-train_dev=val.pt
-trans_set="dev5.pt"
+train_set=train_nodev_sp.fr
+train_set_prefix=train_nodev_sp
+train_dev=dev100.fr
+trans_set="dev.fr"
 
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
     ### Task dependent. You have to make data the following preparation part by yourself.
     ### But you can utilize Kaldi recipes in most cases
     echo "stage 0: Data Preparation"
-    local/data_prep.sh ${how2}
+    # data download and preprecessing
+    for x in train dev; do
+        local/data_prep.sh ${x}
+    done
 fi
 
 feat_tr_dir=${dumpdir}/${train_set}/delta${do_delta}; mkdir -p ${feat_tr_dir}
@@ -86,30 +76,69 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     ### Task dependent. You have to design training and dev sets by yourself.
     ### But you can utilize Kaldi recipes in most cases
     echo "stage 1: Feature Generation"
+    fbankdir=fbank
+    # Generate the fbank features; by default 80-dimensional fbanks with pitch on each frame
+    for x in train dev; do
+        steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 32 --write_utt2num_frames true \
+            data/${x} exp/make_fbank/${x} ${fbankdir}
+    done
 
-    # The fbank features is generated as pre-processing; 40-dimensional fbanks with 3-dimensional pitch on each frame
-    # Note that this dataset does not include the original audio files
+    # make a dev set
+    utils/subset_data_dir.sh --first data/train 100 data/dev100
+    n=$(($(wc -l < data/train/utt2spk) - 100))
+    utils/subset_data_dir.sh --last data/train ${n} data/train_nodev
+    for lang in mb fr; do
+        utils/filter_scp.pl data/train_nodev/utt2spk <data/train/text.tc.${lang} >data/train_nodev/text.tc.${lang}
+        utils/filter_scp.pl data/train_nodev/utt2spk <data/train/text.lc.${lang} >data/train_nodev/text.lc.${lang}
+        utils/filter_scp.pl data/train_nodev/utt2spk <data/train/text.lc.rm.${lang} >data/train_nodev/text.lc.rm.${lang}
+        utils/filter_scp.pl data/dev100/utt2spk <data/train/text.tc.${lang} >data/dev100/text.tc.${lang}
+        utils/filter_scp.pl data/dev100/utt2spk <data/train/text.lc.${lang} >data/dev100/text.lc.${lang}
+        utils/filter_scp.pl data/dev100/utt2spk <data/train/text.lc.rm.${lang} >data/dev100/text.lc.rm.${lang}
+    done
+
+    # speed-perturbed
+    utils/perturb_data_dir_speed.sh 0.9 data/train_nodev data/temp1
+    utils/perturb_data_dir_speed.sh 1.0 data/train_nodev data/temp2
+    utils/perturb_data_dir_speed.sh 1.1 data/train_nodev data/temp3
+    utils/combine_data.sh --extra-files utt2uniq data/train_nodev_sp data/temp1 data/temp2 data/temp3
+    rm -r data/temp1 data/temp2 data/temp3
+    steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 32 --write_utt2num_frames true \
+        data/train_nodev_sp exp/make_fbank/train_nodev_sp ${fbankdir}
+    for lang in mb fr; do
+        awk -v p="sp0.9-" '{printf("%s %s%s\n", $1, p, $1);}' data/train_nodev/utt2spk > data/train_nodev_sp/utt_map
+        utils/apply_map.pl -f 1 data/train_nodev_sp/utt_map <data/train_nodev/text.tc.${lang} >data/train_nodev_sp/text.tc.${lang}
+        utils/apply_map.pl -f 1 data/train_nodev_sp/utt_map <data/train_nodev/text.lc.${lang} >data/train_nodev_sp/text.lc.${lang}
+        utils/apply_map.pl -f 1 data/train_nodev_sp/utt_map <data/train_nodev/text.lc.rm.${lang} >data/train_nodev_sp/text.lc.rm.${lang}
+        awk -v p="sp1.0-" '{printf("%s %s%s\n", $1, p, $1);}' data/train_nodev/utt2spk > data/train_nodev_sp/utt_map
+        utils/apply_map.pl -f 1 data/train_nodev_sp/utt_map <data/train_nodev/text.tc.${lang} >>data/train_nodev_sp/text.tc.${lang}
+        utils/apply_map.pl -f 1 data/train_nodev_sp/utt_map <data/train_nodev/text.lc.${lang} >>data/train_nodev_sp/text.lc.${lang}
+        utils/apply_map.pl -f 1 data/train_nodev_sp/utt_map <data/train_nodev/text.lc.rm.${lang} >>data/train_nodev_sp/text.lc.rm.${lang}
+        awk -v p="sp1.1-" '{printf("%s %s%s\n", $1, p, $1);}' data/train_nodev/utt2spk > data/train_nodev_sp/utt_map
+        utils/apply_map.pl -f 1 data/train_nodev_sp/utt_map <data/train_nodev/text.tc.${lang} >>data/train_nodev_sp/text.tc.${lang}
+        utils/apply_map.pl -f 1 data/train_nodev_sp/utt_map <data/train_nodev/text.lc.${lang} >>data/train_nodev_sp/text.lc.${lang}
+        utils/apply_map.pl -f 1 data/train_nodev_sp/utt_map <data/train_nodev/text.lc.rm.${lang} >>data/train_nodev_sp/text.lc.rm.${lang}
+    done
 
     # Divide into source and target languages
-    for x in train val dev5; do
+    for x in ${train_set_prefix} dev100 dev; do
         local/divide_lang.sh ${x}
     done
 
-    for x in train val; do
+    for x in ${train_set_prefix} dev100; do
         # remove utt having more than 3000 frames
         # remove utt having more than 400 characters
-        for lang in en pt; do
+        for lang in mb fr; do
             remove_longshortdata.sh --maxframes 3000 --maxchars 400 data/${x}.${lang} data/${x}.${lang}.tmp
         done
 
         # Match the number of utterances between source and target languages
         # extract commocn lines
-        cut -f 1 -d " " data/${x}.en.tmp/text > data/${x}.pt.tmp/reclist1
-        cut -f 1 -d " " data/${x}.pt.tmp/text > data/${x}.pt.tmp/reclist2
-        comm -12 data/${x}.pt.tmp/reclist1 data/${x}.pt.tmp/reclist2 > data/${x}.pt.tmp/reclist
+        cut -f 1 -d " " data/${x}.mb.tmp/text > data/${x}.fr.tmp/reclist1
+        cut -f 1 -d " " data/${x}.fr.tmp/text > data/${x}.fr.tmp/reclist2
+        comm -12 data/${x}.fr.tmp/reclist1 data/${x}.fr.tmp/reclist2 > data/${x}.fr.tmp/reclist
 
-        for lang in en pt; do
-            reduce_data_dir.sh data/${x}.${lang}.tmp data/${x}.pt.tmp/reclist data/${x}.${lang}
+        for lang in mb fr; do
+            reduce_data_dir.sh data/${x}.${lang}.tmp data/${x}.fr.tmp/reclist data/${x}.${lang}
             utils/fix_data_dir.sh --utt_extra_files "text.tc text.lc text.lc.rm" data/${x}.${lang}
         done
         rm -rf data/${x}.*.tmp
@@ -121,12 +150,12 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     # dump features for training
     if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${feat_tr_dir}/storage ]; then
       utils/create_split_dir.pl \
-          /export/b{14,15,16,17}/${USER}/espnet-data/egs/how2/st1/dump/${train_set}/delta${do_delta}/storage \
+          /export/b{14,15,16,17}/${USER}/espnet-data/egs/mboshi_french/st1/dump/${train_set}/delta${do_delta}/storage \
           ${feat_tr_dir}/storage
     fi
     if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${feat_dt_dir}/storage ]; then
       utils/create_split_dir.pl \
-          /export/b{14,15,16,17}/${USER}/espnet-data/egs/how2/st1/dump/${train_dev}/delta${do_delta}/storage \
+          /export/b{14,15,16,17}/${USER}/espnet-data/egs/mboshi_french/st1/dump/${train_dev}/delta${do_delta}/storage \
           ${feat_dt_dir}/storage
     fi
     dump.sh --cmd "$train_cmd" --nj 80 --do_delta $do_delta \
@@ -141,51 +170,46 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     done
 fi
 
-dict=data/lang_1spm/${train_set}_${bpemode}${nbpe}_units_${tgt_case}.txt
-nlsyms=data/lang_1spm/${train_set}_non_lang_syms_${tgt_case}.txt
-bpemodel=data/lang_1spm/${train_set}_${bpemode}${nbpe}_${tgt_case}
+dict=data/lang_1char/${train_set}_units_${tgt_case}.txt
+nlsyms=data/lang_1char/${train_set}_non_lang_syms_${tgt_case}.txt
 echo "dictionary: ${dict}"
 if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
     ### Task dependent. You have to check non-linguistic symbols used in the corpus.
     echo "stage 2: Dictionary and Json Data Preparation"
-    mkdir -p data/lang_1spm/
+    mkdir -p data/lang_1char/
 
     echo "make a non-linguistic symbol list for all languages"
-    cut -f 2- -d' ' data/train.*/text.${tgt_case} | grep -o -P '&[^;]*;'| sort | uniq > ${nlsyms}
+    grep sp1.0 data/${train_set_prefix}.*/text.${tgt_case} | cut -f 2- -d' ' | grep -o -P '&[^;]*;'| sort | uniq > ${nlsyms}
     cat ${nlsyms}
 
-    echo "make a joint source and target dictionary"
+    echo "make a dictionary"
     echo "<unk> 1" > ${dict} # <unk> must be 1, 0 will be used for "blank" in CTC
-    offset=$(wc -l < ${dict})
-    cut -f 2- -d' ' data/train.*/text.${tgt_case} | grep -v -e '^\s*$' > data/lang_1spm/input.txt
-    spm_train --user_defined_symbols="$(tr "\n" "," < ${nlsyms})" --input=data/lang_1spm/input.txt --vocab_size=${nbpe} --model_type=${bpemode} --model_prefix=${bpemodel} --input_sentence_size=100000000 --character_coverage=1.0
-    spm_encode --model=${bpemodel}.model --output_format=piece < data/lang_1spm/input.txt | tr ' ' '\n' | sort | uniq | awk -v offset=${offset} '{print $0 " " NR+offset}' >> ${dict}
+    grep sp1.0 data/${train_set_prefix}.*/text.${tgt_case} | text2token.py -s 1 -n 1 -l ${nlsyms} | cut -f 2- -d" " | tr " " "\n" \
+        | sort | uniq | grep -v -e '^\s*$' | awk '{print $0 " " NR+1}' >> ${dict}
     wc -l ${dict}
 
     echo "make json files"
-    data2json.sh --nj 16 --feat ${feat_tr_dir}/feats.scp --text data/${train_set}/text.${tgt_case} --bpecode ${bpemodel}.model --lang pt \
-        data/${train_set} ${dict} > ${feat_tr_dir}/data_${bpemode}${nbpe}.${tgt_case}.json
-    data2json.sh --feat ${feat_dt_dir}/feats.scp --text data/${train_dev}/text.${tgt_case} --bpecode ${bpemodel}.model --lang pt \
-        data/${train_dev} ${dict} > ${feat_dt_dir}/data_${bpemode}${nbpe}.${tgt_case}.json
+    data2json.sh --nj 16 --feat ${feat_tr_dir}/feats.scp --text data/${train_set}/text.${tgt_case} --nlsyms ${nlsyms} --lang fr \
+        data/${train_set} ${dict} > ${feat_tr_dir}/data.${tgt_case}.json
+    data2json.sh --feat ${feat_dt_dir}/feats.scp --text data/${train_dev}/text.${tgt_case} --nlsyms ${nlsyms} --lang fr \
+        data/${train_dev} ${dict} > ${feat_dt_dir}/data.${tgt_case}.json
     for ttask in ${trans_set}; do
         feat_trans_dir=${dumpdir}/${ttask}/delta${do_delta}
-        data2json.sh --feat ${feat_trans_dir}/feats.scp --text data/${ttask}/text.${tgt_case} --bpecode ${bpemodel}.model --lang pt \
-            data/${ttask} ${dict} > ${feat_trans_dir}/data_${bpemode}${nbpe}.${tgt_case}.json
+        data2json.sh --feat ${feat_trans_dir}/feats.scp --text data/${ttask}/text.${tgt_case} --nlsyms ${nlsyms} --lang fr \
+            data/${ttask} ${dict} > ${feat_trans_dir}/data.${tgt_case}.json
     done
 
     # update json (add source references)
-    for x in ${train_set} ${train_dev}; do
-        feat_dir=${dumpdir}/${x}/delta${do_delta}
-        data_dir=data/$(echo ${x} | cut -f 1 -d ".").en
-        update_json.sh --text ${data_dir}/text.${src_case} --bpecode ${bpemodel}.model \
-            ${feat_dir}/data_${bpemode}${nbpe}.${tgt_case}.json ${data_dir} ${dict}
-    done
+    update_json.sh --text data/"$(echo ${train_set} | cut -f -1 -d ".")".mb/text.${src_case} --nlsyms ${nlsyms} --lang mb \
+        ${feat_tr_dir}/data.${tgt_case}.json data/"$(echo ${train_set} | cut -f -1 -d ".")".mb ${dict}
+    update_json.sh --text data/"$(echo ${train_dev} | cut -f -1 -d ".")".mb/text.${src_case} --nlsyms ${nlsyms} --lang mb \
+        ${feat_dt_dir}/data.${tgt_case}.json data/"$(echo ${train_dev} | cut -f -1 -d ".")".mb ${dict}
 fi
 
 # NOTE: skip stage 3: LM Preparation
 
 if [ -z ${tag} ]; then
-    expname=${train_set}_${tgt_case}_${backend}_$(basename ${train_config%.*})_${bpemode}${nbpe}
+    expname=${train_set}_${tgt_case}_${backend}_$(basename ${train_config%.*})
     if ${do_delta}; then
         expname=${expname}_delta
     fi
@@ -222,8 +246,8 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --seed ${seed} \
         --verbose ${verbose} \
         --resume ${resume} \
-        --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.${tgt_case}.json \
-        --valid-json ${feat_dt_dir}/data_${bpemode}${nbpe}.${tgt_case}.json \
+        --train-json ${feat_tr_dir}/data.${tgt_case}.json \
+        --valid-json ${feat_dt_dir}/data.${tgt_case}.json \
         --enc-init ${asr_model} \
         --dec-init ${mt_model}
 fi
@@ -254,7 +278,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         feat_trans_dir=${dumpdir}/${ttask}/delta${do_delta}
 
         # split data
-        splitjson.py --parts ${nj} ${feat_trans_dir}/data_${bpemode}${nbpe}.${tgt_case}.json
+        splitjson.py --parts ${nj} ${feat_trans_dir}/data.${tgt_case}.json
 
         #### use CPU for decoding
         ngpu=0
@@ -265,12 +289,12 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --ngpu ${ngpu} \
             --backend ${backend} \
             --batchsize 0 \
-            --trans-json ${feat_trans_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
+            --trans-json ${feat_trans_dir}/split${nj}utt/data.JOB.json \
             --result-label ${expdir}/${decode_dir}/data.JOB.json \
             --model ${expdir}/results/${trans_model}
 
-        score_bleu.sh --case ${tgt_case} --bpe ${nbpe} --bpemodel ${bpemodel}.model \
-            ${expdir}/${decode_dir} pt ${dict}
+        score_bleu.sh --case ${tgt_case} --nlsyms ${nlsyms} ${expdir}/${decode_dir} fr ${dict}
+
     ) &
     pids+=($!) # store background pids
     done
