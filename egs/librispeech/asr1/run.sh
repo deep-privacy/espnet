@@ -6,7 +6,7 @@
 . ./path.sh || exit 1;
 . ./cmd.sh || exit 1;
 
-damped_n_domain=1
+damped_n_domain=0
 
 # general configuration
 backend=pytorch
@@ -19,6 +19,7 @@ dumpdir=dump   # directory to dump full features
 N=0            # number of minibatches to be used (mainly for debugging). "0" uses all minibatches.
 verbose=0      # verbose option
 resume=snapshot.ep.12        # Resume the training from snapshot
+resume=
 
 # feature configuration
 do_delta=false
@@ -214,14 +215,18 @@ if [ -z ${tag} ]; then
 else
     expname=${train_set}_${backend}_${tag}
 fi
-expname+="_3"
+expname+="_run.sh"
 expdir=exp/${expname}
 mkdir -p ${expdir}
+
+if [[ -n "$resume" ]]; then
+  resume=${expdir}/results/${resume}
+fi
 
 if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
     echo "stage 4: Network Training"
     ${cuda_cmd} --gpu ${ngpu} ${expdir}/train.log \
-        DAMPED_D_task='spk' DAMPED_N_DOMAIN=$damped_n_domain asr_train.py \
+        DAMPED_active_branch='false' DAMPED_D_task='spk' DAMPED_N_DOMAIN=$damped_n_domain asr_train.py \
         --config ${train_config} \
         --preprocess-conf ${preprocess_config} \
         --ngpu ${ngpu} \
@@ -234,9 +239,12 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --debugdir ${expdir} \
         --minibatches ${N} \
         --verbose ${verbose} \
-        --resume ${expdir}/results/${resume} \
-        --train-json ./dump/split_utt_spk/data_unigram5000.train.json \
-        --valid-json ./dump/split_utt_spk/data_unigram5000.dev.json
+        --resume ${resume} \
+        --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.json \
+        --valid-json ${feat_dt_dir}/data_${bpemode}${nbpe}.json
+
+        # --train-json ./dump/split_utt_spk/data_unigram5000.train.json \
+        # --valid-json ./dump/split_utt_spk/data_unigram5000.dev.json
 
         # --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.json \ # used to train ASR (up to epoch 12)
         # --valid-json ${feat_dt_dir}/data_${bpemode}${nbpe}.json
@@ -284,6 +292,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     pids=() # initialize pids
     recog_set="test_clean test_other dev_clean dev_other"
     recog_set="test_clean"
+    recog_model="snapshot.ep.12"
     # recog_set="test_other"
     for rtask in ${recog_set}; do
     (
@@ -310,7 +319,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
 
         # set batchsize 0 to disable batch decoding
         ${decode_cmd} JOB=1:${nj} ${expdir}/${decode_dir}/log/decode.JOB.log \
-            DAMPED_D_task='spk' CUDA_VISIBLE_DEVICES=$GPU_u DAMPED_N_DOMAIN=$damped_n_domain asr_recog.py \
+            DAMPED_active_branch='false' DAMPED_D_task='spk' CUDA_VISIBLE_DEVICES=$GPU_u DAMPED_N_DOMAIN=$damped_n_domain asr_recog.py \
             --config ${decode_config} \
             --ngpu ${ngpu} \
             --backend ${backend} \

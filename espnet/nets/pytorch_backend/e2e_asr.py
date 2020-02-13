@@ -225,10 +225,10 @@ class E2E(ASRInterface, torch.nn.Module):
         self.loss = None
         self.acc = None
 
-        self.spk_branch_grad = damped_nets.BrijSpeakerXvector(251, 1024, 512, 3, 0.2)
-        self.spk_branch_mapper = damped_utils.spkid_mapper("/home/pchampion/lab/damped/egs/librispeech/spk_identif/data")
+        self.disturb_branch = damped_nets.BrijSpeakerXvector(251, 1024, 512, 3, 0.2)
+        self.branch_domain_mapper = damped_utils.spkid_mapper("/home/pchampion/lab/damped/egs/librispeech/spk_identif/data")
 
-        self.spk_branch_grad_criterion = torch.nn.CrossEntropyLoss()
+        self.disturb_branch_criterion = torch.nn.CrossEntropyLoss()
         self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=1)
 
     def init_like_chainer(self):
@@ -287,19 +287,23 @@ class E2E(ASRInterface, torch.nn.Module):
                                            dtype=(torch.float32, torch.long)
                                            )
 
-        damped.nets.GradientReverse.scale = 10
-        hs_pad = damped.nets.GradientReverse.apply(hs_pad)
-        y_pred = self.spk_branch_grad(hs_pad)
-        spk_branch_grad_loss = self.spk_branch_grad_criterion(
-            y_pred,
-            self.spk_branch_mapper(torch.tensor(uttid_list,
-                                                dtype=torch.long),).to(hs_pad.device))
-        print("---> spk_branch_grad loss:", spk_branch_grad_loss)
+        if os.getenv("DAMPED_active_branch", "true") == "true":
 
-        if torch.isnan(spk_branch_grad_loss):
-            print(uttid_list)
-            print(hs_pad[0])
-            print(y_pred)
+            if os.getenv("DAMPED_rev_grad", "true") == "true":
+                damped.nets.GradientReverse.scale = 10
+                hs_pad = damped.nets.GradientReverse.apply(hs_pad)
+
+            y_pred = self.disturb_branch(hs_pad)
+            disturb_branch_loss = self.disturb_branch_criterion(
+                y_pred,
+                self.branch_domain_mapper(torch.tensor(uttid_list,
+                                                    dtype=torch.long),).to(hs_pad.device))
+            print("---> damped_branch_grad loss:", disturb_branch_loss)
+
+            if torch.isnan(disturb_branch_loss):
+                print(uttid_list)
+                print(hs_pad[0])
+                print(y_pred)
 
         # End pchampio
 
@@ -321,7 +325,7 @@ class E2E(ASRInterface, torch.nn.Module):
         # End pchampio
 
         # 4. compute cer without beam search
-        if True or self.mtlalpha == 0 or self.char_list is None:
+        if self.mtlalpha == 0 or self.char_list is None:
             cer_ctc = None
         else:
             cers = []
@@ -401,7 +405,9 @@ class E2E(ASRInterface, torch.nn.Module):
             self.reporter.report(loss_ctc_data, loss_att_data, acc, cer_ctc, cer, wer, loss_data)
         else:
             logging.warning('loss (=%f) is not correct', loss_data)
-        return (0.2*self.loss) + (0.8*spk_branch_grad_loss)
+        if os.getenv("DAMPED_active_branch", "true") == "false":
+            return self.loss
+        return (0.2*self.loss) + (0.8*disturb_branch_loss)
 
     def scorers(self):
         """Scorers."""
