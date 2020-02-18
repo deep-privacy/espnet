@@ -6,7 +6,13 @@
 . ./path.sh || exit 1;
 . ./cmd.sh || exit 1;
 
-damped_n_domain=0
+DAMPED_N_DOMAIN=2
+DAMPED_active_branch='false'
+DAMPED_rev_grad='true'
+DAMPED_rev_grad_lambda=0
+DAMPED_D_task='spk'
+DAMPED_damped_dir='/home/pchampion/lab/damped'
+DAMPED_no_backward='true'
 
 # general configuration
 backend=pytorch
@@ -18,8 +24,8 @@ debugmode=1
 dumpdir=dump   # directory to dump full features
 N=0            # number of minibatches to be used (mainly for debugging). "0" uses all minibatches.
 verbose=0      # verbose option
-resume=snapshot.ep.12        # Resume the training from snapshot
-resume=
+resume=base-libri-snapshot.ep.12        # Resume the training from snapshot
+# resume=
 
 # feature configuration
 do_delta=false
@@ -226,7 +232,7 @@ fi
 if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
     echo "stage 4: Network Training"
     ${cuda_cmd} --gpu ${ngpu} ${expdir}/train.log \
-        DAMPED_active_branch='false' DAMPED_D_task='spk' DAMPED_N_DOMAIN=$damped_n_domain asr_train.py \
+        DAMPED_N_DOMAIN=$DAMPED_N_DOMAIN DAMPED_rev_grad=$DAMPED_rev_grad DAMPED_rev_grad_lambda=$DAMPED_rev_grad_lambda DAMPED_active_branch=$DAMPED_active_branch DAMPED_D_task=$DAMPED_D_task DAMPED_damped_dir=$DAMPED_damped_dir DAMPED_no_backward=$DAMPED_no_backward asr_train.py \
         --config ${train_config} \
         --preprocess-conf ${preprocess_config} \
         --ngpu ${ngpu} \
@@ -240,13 +246,14 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --minibatches ${N} \
         --verbose ${verbose} \
         --resume ${resume} \
-        --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.json \
-        --valid-json ${feat_dt_dir}/data_${bpemode}${nbpe}.json
+        --train-json ./dump/split_utt_spk/data_unigram5000.train.json \
+        --valid-json ./dump/split_utt_spk/data_unigram5000.dev.json
 
         # --train-json ./dump/split_utt_spk/data_unigram5000.train.json \
         # --valid-json ./dump/split_utt_spk/data_unigram5000.dev.json
 
-        # --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.json \ # used to train ASR (up to epoch 12)
+        # used to train ASR (up to epoch 12)
+        # --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.json \
         # --valid-json ${feat_dt_dir}/data_${bpemode}${nbpe}.json
 fi
 
@@ -292,8 +299,8 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     pids=() # initialize pids
     recog_set="test_clean test_other dev_clean dev_other"
     recog_set="test_clean"
-    recog_model="snapshot.ep.12"
-    # recog_set="test_other"
+    recog_model="base-libri-snapshot.ep.12"
+    recog_set="test_other"
     for rtask in ${recog_set}; do
     (
         decode_dir=decode_${rtask}_${recog_model}_$(basename ${decode_config%.*})_${lmtag}
@@ -305,21 +312,21 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         #### use CPU for decoding: ngpu=0
         ngpu=1
 
+        GPU_u=${#pids[@]}
+        GPU_u=1
+
         if [[ $ngpu != 0 ]]; then
           # NOTE: infrastructure dependent conf, must have 4 GPUs!
           # Decoding 4 subset ({dev, test}{clean, other}) decoding on 4 GPUs
-          echo "Using ${#pids[@]} gpu for task: $rtask"
+          echo "Using $GPU_u gpu for task: $rtask"
         fi
 
         # NOTE(pchampio): Tweak the batchsize (min: 1) relative the amount of G-RAM available
         # 'batchsize 2' -> 12G of G-RAM
 
-        GPU_u=${#pids[@]}
-        GPU_u=1
-
         # set batchsize 0 to disable batch decoding
         ${decode_cmd} JOB=1:${nj} ${expdir}/${decode_dir}/log/decode.JOB.log \
-            DAMPED_active_branch='false' DAMPED_D_task='spk' CUDA_VISIBLE_DEVICES=$GPU_u DAMPED_N_DOMAIN=$damped_n_domain asr_recog.py \
+            DAMPED_N_DOMAIN=$DAMPED_N_DOMAIN DAMPED_rev_grad=$DAMPED_rev_grad DAMPED_rev_grad_lambda=$DAMPED_rev_grad_lambda DAMPED_active_branch=$DAMPED_active_branch DAMPED_D_task=$DAMPED_D_task DAMPED_damped_dir=$DAMPED_damped_dir CUDA_VISIBLE_DEVICES=$GPU_u asr_recog.py \
             --config ${decode_config} \
             --ngpu ${ngpu} \
             --backend ${backend} \

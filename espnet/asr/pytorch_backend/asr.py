@@ -167,10 +167,10 @@ class CustomUpdater(StandardUpdater):
         self.iteration = 0
         self.use_apex = use_apex
 
-        if 'DAMPED_no_backward' not in os.environ:
-            print("-- Damped: backprop activated!")
-        else:
+        if os.getenv("DAMPED_no_backward", "false") == "true":
             print("-- Damped: backprop ignored!")
+        else:
+            print("-- Damped: backprop activated!")
 
     # The core part of the update routine can be customized by overriding.
     def update_core(self):
@@ -198,7 +198,7 @@ class CustomUpdater(StandardUpdater):
             # apex does not support torch.nn.DataParallel
             loss = data_parallel(self.model, x, range(self.ngpu)).mean() / self.accum_grad
 
-        if 'DAMPED_no_backward' in os.environ:
+        if os.getenv("DAMPED_no_backward", "false") == "true":
             return
 
         if self.use_apex:

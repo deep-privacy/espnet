@@ -39,8 +39,6 @@ from espnet.nets.pytorch_backend.rnn.encoders import encoder_for
 from espnet.nets.scorers.ctc import CTCPrefixScorer
 
 import damped
-from damped import utils as damped_utils
-from damped import nets as damped_nets
 
 CTC_LOSS_THRESHOLD = 10000
 
@@ -225,11 +223,31 @@ class E2E(ASRInterface, torch.nn.Module):
         self.loss = None
         self.acc = None
 
-        self.disturb_branch = damped_nets.BrijSpeakerXvector(251, 1024, 512, 3, 0.2)
-        self.branch_domain_mapper = damped_utils.spkid_mapper("/home/pchampion/lab/damped/egs/librispeech/spk_identif/data")
+        self.damped_log = damped.disturb.MetricsMonitor(os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/espnet"))
+        self.record_loss = False
 
-        self.disturb_branch_criterion = torch.nn.CrossEntropyLoss()
-        self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=1)
+
+        if os.environ['DAMPED_D_task'] == "spk":
+            print(f"---- DAMPED D_task ='{os.environ['DAMPED_D_task']}'!")
+            self.disturb_branch = damped.nets.BrijSpeakerXvector(251, 1024, 512, 3, 0.2)
+            self.branch_domain_mapper = damped.utils.spkid_mapper(os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/spk_identif/data"))
+            self.disturb_branch_criterion = torch.nn.CrossEntropyLoss()
+
+            self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=1)
+            self.gender_branch = damped.disturb.DomainTask(name="gender_classifier", to_rank=2)
+
+        elif os.environ['DAMPED_D_task'] == "gender":
+            print(f"---- DAMPED D_task ='{os.environ['DAMPED_D_task']}'!")
+
+            self.disturb_branch = damped.nets.BrijSpeakerXvector(2, 1024, 512, 3, 0.2)
+            self.branch_domain_mapper = damped.utils.gender_mapper(os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/gender/data"))
+            self.disturb_branch_criterion = torch.nn.CrossEntropyLoss()
+
+            self.spk_branch = damped.disturb.DomainTask(name="speaker_identificaion", to_rank=1)
+            self.gender_branch = damped.disturb.DomainTask(name="gender_classifier", to_rank=2)
+
+        else:
+            print(f"---- DAMPED unknown D_task '{os.environ['DAMPED_D_task']}'!")
 
     def init_like_chainer(self):
         """Initialize weight like chainer.
@@ -282,23 +300,24 @@ class E2E(ASRInterface, torch.nn.Module):
             uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
             uttid_list.append(uttid)
 
+        req = self.gender_branch.fork_detach(hs_pad.cpu(),
+                                             torch.tensor(uttid_list, dtype=torch.long),
+                                             dtype=(torch.float32, torch.long))
+
         req2 = self.spk_branch.fork_detach(hs_pad.cpu(),
                                            torch.tensor(uttid_list, dtype=torch.long),
-                                           dtype=(torch.float32, torch.long)
-                                           )
+                                           dtype=(torch.float32, torch.long))
 
         if os.getenv("DAMPED_active_branch", "true") == "true":
 
             if os.getenv("DAMPED_rev_grad", "true") == "true":
-                damped.nets.GradientReverse.scale = 10
+                damped.nets.GradientReverse.scale = int(os.getenv("DAMPED_rev_grad_lambda", "0"))
                 hs_pad = damped.nets.GradientReverse.apply(hs_pad)
 
             y_pred = self.disturb_branch(hs_pad)
-            disturb_branch_loss = self.disturb_branch_criterion(
-                y_pred,
-                self.branch_domain_mapper(torch.tensor(uttid_list,
-                                                    dtype=torch.long),).to(hs_pad.device))
-            print("---> damped_branch_grad loss:", disturb_branch_loss)
+            target = self.branch_domain_mapper(torch.tensor(uttid_list,
+                                               dtype=torch.long)).to(hs_pad.device)
+            disturb_branch_loss = self.disturb_branch_criterion(y_pred, target)
 
             if torch.isnan(disturb_branch_loss):
                 print(uttid_list)
@@ -322,6 +341,7 @@ class E2E(ASRInterface, torch.nn.Module):
 
         # 3,5. pchampio wait for domain branch to fully have received the hidden state
         req2.wait()
+        req.wait()
         # End pchampio
 
         # 4. compute cer without beam search
@@ -407,6 +427,20 @@ class E2E(ASRInterface, torch.nn.Module):
             logging.warning('loss (=%f) is not correct', loss_data)
         if os.getenv("DAMPED_active_branch", "true") == "false":
             return self.loss
+
+
+        if hs_pad.requires_grad:
+            self.damped_log.add_scalar("/train/asr_loss", self.loss.detach())
+            self.damped_log.add_scalar("/train/disturb_loss", disturb_branch_loss.detach())
+            self.damped_log.push_scalar_tag("/dev/asr_loss")
+            self.damped_log.push_scalar_tag("/dev/disturb_loss")
+
+        if not hs_pad.requires_grad:
+            # use push_scalar_tag and not interval_log
+            self.damped_log.add_scalar("/dev/asr_loss", self.loss.detach(), interval_log=999999)
+            self.damped_log.add_scalar("/dev/disturb_loss", disturb_branch_loss.detach(), interval_log=999999)
+
+
         return (0.2*self.loss) + (0.8*disturb_branch_loss)
 
     def scorers(self):
@@ -505,11 +539,14 @@ class E2E(ASRInterface, torch.nn.Module):
 
         req2 = self.spk_branch.fork_detach(hs_pad.cpu(),
                                            torch.tensor(uttid_list, dtype=torch.long),
-                                           dtype=(torch.float32, torch.long)
-                                           )
+                                           dtype=(torch.float32, torch.long))
 
+        req = self.gender_branch.fork_detach(hs_pad.cpu(),
+                                             torch.tensor(uttid_list, dtype=torch.long),
+                                             dtype=(torch.float32, torch.long))
 
         req2.wait()
+        req.wait()
         # End pchampio
 
         # calculate log P(z_t|X) for CTC scores
