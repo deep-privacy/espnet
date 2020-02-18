@@ -230,6 +230,11 @@ class E2E(ASRInterface, torch.nn.Module):
         if os.environ['DAMPED_D_task'] == "spk":
             print(f"---- DAMPED D_task ='{os.environ['DAMPED_D_task']}'!")
             self.disturb_branch = damped.nets.BrijSpeakerXvector(251, 1024, 512, 3, 0.2)
+
+            path = os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/spk_identif/exp/baseline__rank=2_eproj=1024/BrijSpeakerXvector.best.acc.ckpt")
+            model_state_dict = torch.load(path, map_location=lambda storage, loc: storage)['model']
+            self.disturb_branch.load_state_dict(model_state_dict)
+
             self.branch_domain_mapper = damped.utils.spkid_mapper(os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/spk_identif/data"))
             self.disturb_branch_criterion = torch.nn.CrossEntropyLoss()
 
@@ -300,6 +305,7 @@ class E2E(ASRInterface, torch.nn.Module):
             uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
             uttid_list.append(uttid)
 
+        print(uttid_list)
         req = self.gender_branch.fork_detach(hs_pad.cpu(),
                                              torch.tensor(uttid_list, dtype=torch.long),
                                              dtype=(torch.float32, torch.long))

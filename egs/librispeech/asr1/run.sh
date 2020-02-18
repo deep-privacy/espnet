@@ -7,12 +7,12 @@
 . ./cmd.sh || exit 1;
 
 DAMPED_N_DOMAIN=2
-DAMPED_active_branch='false'
+DAMPED_active_branch='true'
 DAMPED_rev_grad='true'
-DAMPED_rev_grad_lambda=0
+DAMPED_rev_grad_lambda=10
 DAMPED_D_task='spk'
 DAMPED_damped_dir='/home/pchampion/lab/damped'
-DAMPED_no_backward='true'
+DAMPED_no_backward='false'
 
 # general configuration
 backend=pytorch
@@ -78,7 +78,6 @@ set -o pipefail
 
 train_set=train_960
 train_dev=dev
-recog_set="test_clean test_other dev_clean dev_other"
 
 if [ ${stage} -le -1 ] && [ ${stop_stage} -ge -1 ]; then
     echo "stage -1: Data Download"
@@ -297,17 +296,20 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     nj=1
 
     pids=() # initialize pids
-    recog_set="test_clean test_other dev_clean dev_other"
-    recog_set="test_clean"
     recog_model="base-libri-snapshot.ep.12"
-    recog_set="test_other"
+    recog_set="test_clean"
+    # recog_set="test_other"
+    recog_set="test_loc"
     for rtask in ${recog_set}; do
     (
         decode_dir=decode_${rtask}_${recog_model}_$(basename ${decode_config%.*})_${lmtag}
         feat_recog_dir=${dumpdir}/${rtask}/delta${do_delta}
 
-        # split data
-        splitjson.py --parts ${nj} ${feat_recog_dir}/data_${bpemode}${nbpe}.json
+
+        if [[ $recog_set != "test_loc" ]]; then
+          # split data
+          splitjson.py --parts ${nj} ${feat_recog_dir}/data_${bpemode}${nbpe}.json
+        fi
 
         #### use CPU for decoding: ngpu=0
         ngpu=1
@@ -324,6 +326,12 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         # NOTE(pchampio): Tweak the batchsize (min: 1) relative the amount of G-RAM available
         # 'batchsize 2' -> 12G of G-RAM
 
+        if [[ $recog_set == "test_loc" ]]; then
+          recog_json="dump/split_utt_spk/data_unigram5000.test.json"
+        else
+          recog_json=${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json
+        fi
+
         # set batchsize 0 to disable batch decoding
         ${decode_cmd} JOB=1:${nj} ${expdir}/${decode_dir}/log/decode.JOB.log \
             DAMPED_N_DOMAIN=$DAMPED_N_DOMAIN DAMPED_rev_grad=$DAMPED_rev_grad DAMPED_rev_grad_lambda=$DAMPED_rev_grad_lambda DAMPED_active_branch=$DAMPED_active_branch DAMPED_D_task=$DAMPED_D_task DAMPED_damped_dir=$DAMPED_damped_dir CUDA_VISIBLE_DEVICES=$GPU_u asr_recog.py \
@@ -331,7 +339,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --ngpu ${ngpu} \
             --backend ${backend} \
             --batchsize 2 \
-            --recog-json ./dump/split_utt_spk/data_unigram5000.test.json \
+            --recog-json ${recog_json} \
             --result-label ${expdir}/${decode_dir}/data.JOB.json \
             --model ${expdir}/results/${recog_model}  \
             --rnnlm ${lmexpdir}/${lang_model}
