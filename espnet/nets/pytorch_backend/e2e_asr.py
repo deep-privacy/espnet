@@ -223,7 +223,7 @@ class E2E(ASRInterface, torch.nn.Module):
         self.loss = None
         self.acc = None
 
-        self.damped_log = damped.disturb.MetricsMonitor(os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/espnet"))
+        self.damped_log = damped.disturb.MetricsMonitor(os.path.join(os.getenv("DAMPED_damped_dir"), f"egs/librispeech/espnet-{args.outdir}"))
         self.record_loss = False
 
 
@@ -231,9 +231,15 @@ class E2E(ASRInterface, torch.nn.Module):
             print(f"---- DAMPED D_task ='{os.environ['DAMPED_D_task']}'!")
             self.disturb_branch = damped.nets.BrijSpeakerXvector(251, 1024, 512, 3, 0.2)
 
-            path = os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/spk_identif/exp/baseline__rank=2_eproj=1024/BrijSpeakerXvector.best.acc.ckpt")
-            model_state_dict = torch.load(path, map_location=lambda storage, loc: storage)['model']
-            self.disturb_branch.load_state_dict(model_state_dict)
+            if os.getenv("DAMPED_active_branch", "true") == "true":
+                path = os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/spk_identif/exp/baseline__rank=2_eproj=1024/BrijSpeakerXvector.best.acc.ckpt")
+                path = os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/spk_identif/exp/adv_spk__rank=2_eproj=1024/BrijSpeakerXvector-val99.ckpt")
+                path = os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/spk_identif/exp/adv_spk__rank=2_eproj=1024/BrijSpeakerXvector-val109.ckpt")
+                path = os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/spk_identif/exp/adv_spk__rank=2_eproj=1024/BrijSpeakerXvector-val119.ckpt")
+                path = os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/spk_identif/exp/adv_spk__rank=2_eproj=1024/BrijSpeakerXvector-val128.ckpt")
+                path = os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/spk_identif/exp/adv_spk__rank=2_eproj=1024/BrijSpeakerXvector-val135.ckpt")
+                model_state_dict = torch.load(path, map_location=lambda storage, loc: storage)['model']
+                self.disturb_branch.load_state_dict(model_state_dict)
 
             self.branch_domain_mapper = damped.utils.spkid_mapper(os.path.join(os.getenv("DAMPED_damped_dir"), "egs/librispeech/spk_identif/data"))
             self.disturb_branch_criterion = torch.nn.CrossEntropyLoss()
@@ -305,7 +311,6 @@ class E2E(ASRInterface, torch.nn.Module):
             uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
             uttid_list.append(uttid)
 
-        print(uttid_list)
         req = self.gender_branch.fork_detach(hs_pad.cpu(),
                                              torch.tensor(uttid_list, dtype=torch.long),
                                              dtype=(torch.float32, torch.long))
@@ -317,7 +322,7 @@ class E2E(ASRInterface, torch.nn.Module):
         if os.getenv("DAMPED_active_branch", "true") == "true":
 
             if os.getenv("DAMPED_rev_grad", "true") == "true":
-                damped.nets.GradientReverse.scale = int(os.getenv("DAMPED_rev_grad_lambda", "0"))
+                damped.nets.GradientReverse.scale = float(os.getenv("DAMPED_rev_grad_lambda", "0.0"))
                 hs_pad = damped.nets.GradientReverse.apply(hs_pad)
 
             y_pred = self.disturb_branch(hs_pad)
@@ -443,8 +448,8 @@ class E2E(ASRInterface, torch.nn.Module):
 
         if not hs_pad.requires_grad:
             # use push_scalar_tag and not interval_log
-            self.damped_log.add_scalar("/dev/asr_loss", self.loss.detach(), interval_log=999999)
-            self.damped_log.add_scalar("/dev/disturb_loss", disturb_branch_loss.detach(), interval_log=999999)
+            self.damped_log.add_scalar("/dev/asr_loss", self.loss.detach(), interval_log=1e15)
+            self.damped_log.add_scalar("/dev/disturb_loss", disturb_branch_loss.detach(), interval_log=1e15)
 
 
         return (0.2*self.loss) + (0.8*disturb_branch_loss)

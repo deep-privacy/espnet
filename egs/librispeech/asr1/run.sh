@@ -9,10 +9,25 @@
 DAMPED_N_DOMAIN=2
 DAMPED_active_branch='true'
 DAMPED_rev_grad='true'
-DAMPED_rev_grad_lambda=10
+DAMPED_rev_grad_lambda=0.1
 DAMPED_D_task='spk'
 DAMPED_damped_dir='/home/pchampion/lab/damped'
 DAMPED_no_backward='false'
+
+TRAIN_SET=train_600
+TRAIN_SET=train_960
+TRAIN_SET=train_loc_60
+
+RECOG_MODEL=snapshot.ep.58
+RECOG_MODEL=model.acc.best
+RECOG_MODEL="?"
+
+RECOG_SET="test_clean"
+RECOG_SET="test_other"
+RECOG_SET="test_loc"
+
+resume=
+resume=snapshot.ep.64        # Resume the training from snapshot
 
 # general configuration
 backend=pytorch
@@ -24,8 +39,6 @@ debugmode=1
 dumpdir=dump   # directory to dump full features
 N=0            # number of minibatches to be used (mainly for debugging). "0" uses all minibatches.
 verbose=0      # verbose option
-resume=base-libri-snapshot.ep.12        # Resume the training from snapshot
-# resume=
 
 # feature configuration
 do_delta=false
@@ -68,6 +81,10 @@ bpemode=unigram
 # exp tag
 tag="" # tag for managing experiments.
 
+train_set=train_960
+train_dev=dev
+recog_set="test_clean test_other dev_clean dev_other"
+
 . utils/parse_options.sh || exit 1;
 
 # Set bash to 'debug' mode, it will exit on :
@@ -75,9 +92,6 @@ tag="" # tag for managing experiments.
 set -e
 set -u
 set -o pipefail
-
-train_set=train_960
-train_dev=dev
 
 if [ ${stage} -le -1 ] && [ ${stop_stage} -ge -1 ]; then
     echo "stage -1: Data Download"
@@ -122,16 +136,6 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     compute-cmvn-stats scp:data/${train_set}/feats.scp data/${train_set}/cmvn.ark
 
     # dump features for training
-    if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${feat_tr_dir}/storage ]; then
-    utils/create_split_dir.pl \
-        /export/b{14,15,16,17}/${USER}/espnet-data/egs/librispeech/asr1/dump/${train_set}/delta${do_delta}/storage \
-        ${feat_tr_dir}/storage
-    fi
-    if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${feat_dt_dir}/storage ]; then
-    utils/create_split_dir.pl \
-        /export/b{14,15,16,17}/${USER}/espnet-data/egs/librispeech/asr1/dump/${train_dev}/delta${do_delta}/storage \
-        ${feat_dt_dir}/storage
-    fi
     dump.sh --cmd "$train_cmd" --nj ${nj} --do_delta ${do_delta} \
         data/${train_set}/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/train ${feat_tr_dir}
     dump.sh --cmd "$train_cmd" --nj ${nj} --do_delta ${do_delta} \
@@ -168,6 +172,37 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
         data2json.sh --feat ${feat_recog_dir}/feats.scp --bpecode ${bpemodel}.model \
             data/${rtask} ${dict} > ${feat_recog_dir}/data_${bpemode}${nbpe}.json
     done
+
+    if [ ! -d "dump/split_utt_spk" ]; then
+      echo "stage 2.b: Generating train_loc_60 test_loc dev_loc"
+      # Split training data (has all the speakers) to have a train/dev/test with all
+      # spk represented. (much needed for spk evaluation)
+      python ./local/splitjson_spk.py \
+        ./dump/train_960/deltafalse/data_unigram5000.json \
+        --dev 2 \
+        --test 2 \
+        --filter ./data/train_clean_100/spk2gender \
+        --out dump/split_utt_spk
+    fi
+    if [ ! -d "dump/train_600" ]; then
+      echo "stage 2.b: Generating train_600"
+      # Split train_960 training data to only have train_600 (faster than recreating everything)
+      utils/combine_data.sh --extra_files utt2num_frames data/train_600_org data/train_clean_100 data/train_other_500
+      # This script is used to split a ESPnet json file, Here I'm using it to
+      # filter the spk from data/train_clean_100 data/train_other_500.
+      # This quickly create a train_600 split (compute-cmvn-stats is still calculated on train_960..)
+      python ./local/splitjson_spk.py \
+        ./dump/train_960/deltafalse/data_unigram5000.json \
+        --dev 0 \
+        --test 0 \
+        --filter ./data/train_600_org/spk2gender \
+        --out dump/train_600
+      # some clean-up (dev is train in this case)
+      # The splitjson_spk isn't intended for this purpose, small split bug when dev/test=0
+      mv dump/train_600/data_unigram5000.dev.json dump/train_600/data_unigram5000.train.json -f
+      rm dump/train_600/data_unigram5000.test.json
+    fi
+
 fi
 
 # You can skip this and remove --rnnlm option in the recognition (stage 5)
@@ -209,14 +244,18 @@ if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
         --dump-hdf5-path ${lmdatadir}
 fi
 
+############################
+#  train_set changed HERE  #
+############################
+
+train_set=$TRAIN_SET
+echo "Training using train_set: $train_set"
+
 if [ -z ${tag} ]; then
     expname=${train_set}_${backend}_$(basename ${train_config%.*})
     if ${do_delta}; then
         expname=${expname}_delta
     fi
-    # if [ -n "${preprocess_config}" ]; then
-        # expname=${expname}_$(basename ${preprocess_config%.*})
-    # fi
 else
     expname=${train_set}_${backend}_${tag}
 fi
@@ -230,6 +269,19 @@ fi
 
 if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
     echo "stage 4: Network Training"
+
+    train_json=${feat_tr_dir}/data_${bpemode}${nbpe}.json
+    valid_json=${feat_dt_dir}/data_${bpemode}${nbpe}.json
+    if [[ $train_set == "train_loc_60" ]]; then
+      train_json="dump/split_utt_spk/data_unigram5000.train.json"
+      valid_json="dump/split_utt_spk/data_unigram5000.dev.json"
+    fi
+    if [[ $train_set == "train_600" ]]; then
+      train_json="dump/train_600/data_unigram5000.train.json"
+      # keep same valid_json as train_960
+    fi
+
+
     ${cuda_cmd} --gpu ${ngpu} ${expdir}/train.log \
         DAMPED_N_DOMAIN=$DAMPED_N_DOMAIN DAMPED_rev_grad=$DAMPED_rev_grad DAMPED_rev_grad_lambda=$DAMPED_rev_grad_lambda DAMPED_active_branch=$DAMPED_active_branch DAMPED_D_task=$DAMPED_D_task DAMPED_damped_dir=$DAMPED_damped_dir DAMPED_no_backward=$DAMPED_no_backward asr_train.py \
         --config ${train_config} \
@@ -245,15 +297,8 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --minibatches ${N} \
         --verbose ${verbose} \
         --resume ${resume} \
-        --train-json ./dump/split_utt_spk/data_unigram5000.train.json \
-        --valid-json ./dump/split_utt_spk/data_unigram5000.dev.json
-
-        # --train-json ./dump/split_utt_spk/data_unigram5000.train.json \
-        # --valid-json ./dump/split_utt_spk/data_unigram5000.dev.json
-
-        # used to train ASR (up to epoch 12)
-        # --train-json ${feat_tr_dir}/data_${bpemode}${nbpe}.json \
-        # --valid-json ${feat_dt_dir}/data_${bpemode}${nbpe}.json
+        --train-json $train_json \
+        --valid-json $valid_json
 fi
 
 if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
@@ -296,10 +341,20 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     nj=1
 
     pids=() # initialize pids
-    recog_model="base-libri-snapshot.ep.12"
-    recog_set="test_clean"
-    # recog_set="test_other"
-    recog_set="test_loc"
+
+    ########################################
+    #  recog_set/recog_model changed HERE  #
+    ########################################
+
+    recog_model=$RECOG_MODEL
+    recog_set=$RECOG_SET
+
+    echo "Recog_model using model: $recog_model"
+    echo "Recog on recog_set: $recog_set"
+
+    if [[ $recog_model == "?" ]]; then
+      exit 1
+    fi
     for rtask in ${recog_set}; do
     (
         decode_dir=decode_${rtask}_${recog_model}_$(basename ${decode_config%.*})_${lmtag}
@@ -326,10 +381,9 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
         # NOTE(pchampio): Tweak the batchsize (min: 1) relative the amount of G-RAM available
         # 'batchsize 2' -> 12G of G-RAM
 
+        recog_json=${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json
         if [[ $recog_set == "test_loc" ]]; then
           recog_json="dump/split_utt_spk/data_unigram5000.test.json"
-        else
-          recog_json=${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json
         fi
 
         # set batchsize 0 to disable batch decoding
@@ -343,9 +397,6 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
             --result-label ${expdir}/${decode_dir}/data.JOB.json \
             --model ${expdir}/results/${recog_model}  \
             --rnnlm ${lmexpdir}/${lang_model}
-
-            # --recog-json ./dump/split_utt_spk/data_unigram5000.test.json \
-            # --recog-json ${feat_recog_dir}/split${nj}utt/data_${bpemode}${nbpe}.JOB.json \
 
         score_sclite.sh --bpe ${nbpe} --bpemodel ${bpemodel}.model --wer true ${expdir}/${decode_dir} ${dict}
 
