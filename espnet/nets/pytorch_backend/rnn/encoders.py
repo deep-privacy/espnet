@@ -269,25 +269,6 @@ class Encoder(torch.nn.Module):
             prev_states = [None] * len(self.enc)
         assert len(prev_states) == len(self.enc)
 
-        # pchampio get the spkid label
-        #  def _codec(x):
-            #  return damped.utils.str_int_encoder.encode(x.split("-")[0])
-
-        #  uttid_list = []
-        #  for i in range(len(xs_pad)):
-            #  key = xs_pad[i][0][:3].clone().detach().float()
-
-            #  uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(
-                #  key,
-                #  codec=_codec,
-                #  delete=False
-            #  )
-            #  uttid_list.append(uttid)
-
-        #  module_index = 0
-        #  requests = []
-        # End pchampio
-
         current_states = []
         for module, prev_state in zip(self.enc, prev_states):
             xs_pad, ilens, states = module(xs_pad, ilens, prev_state=prev_state)

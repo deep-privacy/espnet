@@ -299,16 +299,18 @@ class E2E(ASRInterface, torch.nn.Module):
 
         # 1,5 pchampio send the hidden state to domain task (async)
         def _codec(x):
+            if int(os.getenv("DAMPED_N_DOMAIN", "0")) == 0:
+                return x[0] # avoid `RuntimeError: Overflow when unpacking long` when using other dataset than libri
             if x == "-1":
                 print("Damped warning: Domain Label not found! (Sending -1)")
-                return damped.utils.str_int_encoder.encode(x)
-            return damped.utils.str_int_encoder.encode(x.split("-")[0])
+                return x
+            return x.split("-")[0]
 
         uttid_list = []
         for i in range(len(xs_pad)):
             key = xs_pad[i][0][:3].clone().detach().float()
 
-            uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
+            uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=lambda x: damped.utils.str_int_encoder.encode(_codec(x)))
             uttid_list.append(uttid)
 
         req = self.gender_branch.fork_detach(hs_pad.cpu(),
@@ -539,14 +541,27 @@ class E2E(ASRInterface, torch.nn.Module):
 
         # 1,5 pchampio send the hidden state to domain task (async)
         def _codec(x):
-            return damped.utils.str_int_encoder.encode(x.split("-")[0])
+            if int(os.getenv("DAMPED_N_DOMAIN", "0")) == 0:
+                return x[0] # avoid `RuntimeError: Overflow when unpacking long` when using other dataset than libri
+            if x == "-1":
+                print("Damped warning: Domain Label not found! (Sending -1)")
+                return x
+            return x.split("-")[0]
+
+        if os.getenv("DAMPED_save_uttid_eproj", "") != "":
+            for i in range(len(xs_pad)):
+                key = xs_pad[i][0][:3].clone().detach().float()
+                uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, delete=False)
+                path = os.path.join(os.environ["DAMPED_save_uttid_eproj"], uttid + ".pt")
+                torch.save(hs_pad[i], path)
 
         uttid_list = []
         for i in range(len(xs_pad)):
             key = xs_pad[i][0][:3].clone().detach().float()
 
-            uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=_codec)
+            uttid = damped.disturb.DomainLabelMapper(name="speaker_identificaion").get(key, codec=lambda x: damped.utils.str_int_encoder.encode(_codec(x)))
             uttid_list.append(uttid)
+
 
         req2 = self.spk_branch.fork_detach(hs_pad.cpu(),
                                            torch.tensor(uttid_list, dtype=torch.long),
