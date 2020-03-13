@@ -1,6 +1,6 @@
 # network architecture
 # encoder related
-etype: vggblstm     # encoder architecture type
+etype: blstm     # encoder architecture type
 elayers: 3
 eunits: 1024
 eprojs: 1024

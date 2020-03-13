@@ -19,12 +19,12 @@ TRAIN_SET=train_960
 TRAIN_SET=train_loc_60
 
 RECOG_MODEL=snapshot.ep.58
-RECOG_MODEL=model.acc.best
 RECOG_MODEL="?"
+RECOG_MODEL=model.acc.best
 
 RECOG_SET="test_clean"
-RECOG_SET="test_other"
 RECOG_SET="test_loc"
+RECOG_SET="test_other"
 
 resume=
 resume=snapshot.ep.64        # Resume the training from snapshot
@@ -288,7 +288,7 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
         --preprocess-conf ${preprocess_config} \
         --ngpu ${ngpu} \
         --backend ${backend} \
-        --n-iter-processes 16 \
+        --n-iter-processes 32 \
         --outdir ${expdir}/results \
         --tensorboard-dir tensorboard/${expname} \
         --debugmode ${debugmode} \
